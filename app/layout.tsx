@@ -23,7 +23,7 @@ const courierPrime = Courier_Prime({
 });
 
 export const metadata: Metadata = {
-  title: "Arcade Vault · Portal Retro",
+  title: "Arcade Retro · Portal Retro",
   description:
     "Plataforma para jugar juegos retro en línea y competir por la puntuación más alta.",
 };
@@ -56,7 +56,7 @@ export default function RootLayout({
                 letterSpacing: "0.16em",
               }}
             >
-              © 2026 ARCADE VAULT · HECHO CON PIXELES Y NEÓN · v2.6.0
+              © 2026 ARCADE RETRO · HECHO CON PIXELES Y NEÓN · v2.6.0
             </footer>
           </UserProvider>
         </div>
