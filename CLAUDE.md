@@ -23,6 +23,10 @@ This project uses **Next.js 16.2.10** with breaking changes vs. older versions. 
 - **Removed**: `next lint` command, AMP support, runtime configuration, `unstable_rootParams`.
 - Parallel routes require a `default.js`.
 
+##
+
+Usa siempre /frontend-design para diseñar la interfaz de usuario.
+
 ## Architecture
 
 - **App Router only** — routes live in `app/` (currently just the root `layout.tsx` + `page.tsx` from create-next-app).
