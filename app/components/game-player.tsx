@@ -163,7 +163,7 @@ export function GamePlayer({ game }: { game: Game }) {
                 JUGAR DE NUEVO
               </button>
               <button className="btn magenta" onClick={() => router.push("/")}>
-                VOLVER AL VAULT
+                VOLVER AL ARCADE
               </button>
             </div>
           </div>

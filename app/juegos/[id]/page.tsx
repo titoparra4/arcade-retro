@@ -64,7 +64,7 @@ export default async function GameDetail({
               ▶ JUGAR AHORA
             </Link>
             <Link href="/" className="btn ghost lg">
-              VOLVER AL VAULT
+              VOLVER AL ARCADE
             </Link>
           </div>
         </div>

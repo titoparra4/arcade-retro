@@ -24,7 +24,7 @@ export function Nav() {
         <Link href="/" className="logo" onClick={close}>
           <div className="logo-mark"></div>
           <div className="logo-text neon-cyan">
-            ARCADE <span className="neon-magenta">VAULT</span>
+            ARCADE <span className="neon-magenta">RETRO</span>
           </div>
         </Link>
         <div className="links">
