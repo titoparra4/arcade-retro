@@ -83,7 +83,7 @@ export function GamePlayer({ game }: { game: Game }) {
           </button>
           <button
             className="btn ghost"
-            onClick={() => router.push(`/juegos/${game.id}`)}
+            onClick={() => router.push(`/games/${game.id}`)}
           >
             SALIR
           </button>
@@ -162,7 +162,7 @@ export function GamePlayer({ game }: { game: Game }) {
               <button className="btn" onClick={restart}>
                 JUGAR DE NUEVO
               </button>
-              <button className="btn magenta" onClick={() => router.push("/")}>
+              <button className="btn magenta" onClick={() => router.push("/games")}>
                 VOLVER AL ARCADE
               </button>
             </div>

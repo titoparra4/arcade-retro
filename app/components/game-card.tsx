@@ -23,7 +23,7 @@ export function GameCard({ game }: { game: Game }) {
     el.style.transform = "";
   };
 
-  const goDetail = () => router.push(`/juegos/${game.id}`);
+  const goDetail = () => router.push(`/games/${game.id}`);
 
   return (
     <div
