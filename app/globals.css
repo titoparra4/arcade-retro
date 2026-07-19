@@ -1275,3 +1275,16 @@ a { color: inherit; text-decoration: none; }
 .term-body .dim { color: var(--ink-dim); }
 .term-body .success { margin-top: 12px; color: var(--green); text-shadow: 0 0 6px rgba(0,255,136,0.45); font-weight: 700; white-space: pre-wrap; }
 .term-body .caret { animation: blink 1s steps(1) infinite; }
+
+/* Terminal de error del formulario de contacto (nuevo en SPEC 03, no existe en el template) */
+.terminal-error {
+  margin-top: 14px; padding: 12px 14px;
+  background: #000; border: 1px solid #ff5f56;
+  box-shadow: 0 0 14px rgba(255, 95, 86, 0.25);
+  font-family: var(--mono); font-size: 12px; line-height: 1.7;
+  color: #ff5f56; letter-spacing: 0.04em;
+}
+.terminal-error .prompt { color: var(--cyan); margin-right: 8px; }
+.terminal-error .caret { animation: blink 1s steps(1) infinite; }
+
+.btn:disabled { opacity: 0.55; cursor: wait; pointer-events: none; }
