@@ -5,7 +5,7 @@ export type GameColor = "cyan" | "magenta" | "yellow" | "green";
 export type Category = "ARCADE" | "PUZZLE" | "SHOOTER" | "VERSUS";
 
 export interface Game {
-  id: string; // slug usado en la URL: /juegos/[id]
+  id: string; // slug usado en la URL: /games/[id]
   title: string;
   short: string; // descripción corta (tarjeta)
   long: string; // descripción larga (detalle)

@@ -10,11 +10,10 @@ export function Nav() {
   const pathname = usePathname();
   const { user, signOut } = useUser();
 
-  // "Biblioteca" también queda activa en detalle y reproductor (/juegos/...)
+  // "Inicio" solo está activo en "/" exacto; "Biblioteca" también queda
+  // activa en detalle y reproductor (/games/...)
   const isActive = (href: string) =>
-    href === "/"
-      ? pathname === "/" || pathname.startsWith("/juegos")
-      : pathname.startsWith(href);
+    href === "/" ? pathname === "/" : pathname.startsWith(href);
 
   const close = () => setOpen(false);
 
@@ -29,6 +28,9 @@ export function Nav() {
         </Link>
         <div className="links">
           <Link href="/" className={isActive("/") ? "active" : ""}>
+            Inicio
+          </Link>
+          <Link href="/games" className={isActive("/games") ? "active" : ""}>
             Biblioteca
           </Link>
           <Link href="/salon" className={isActive("/salon") ? "active" : ""}>
@@ -67,6 +69,13 @@ export function Nav() {
           MENÚ
         </div>
         <Link href="/" className={isActive("/") ? "active" : ""} onClick={close}>
+          Inicio
+        </Link>
+        <Link
+          href="/games"
+          className={isActive("/games") ? "active" : ""}
+          onClick={close}
+        >
           Biblioteca
         </Link>
         <Link
