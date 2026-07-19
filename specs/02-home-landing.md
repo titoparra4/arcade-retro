@@ -1,6 +1,6 @@
 # SPEC 02 — Home landing page
 
-> **Estado:** Aprobado
+> **Estado:** Implementado
 > **Depende de:** SPEC 01
 > **Fecha:** 2026-07-19
 > **Objetivo:** Implementar el landing page del template `references/templates/home-about/` como nueva ruta `/`, moviendo la Biblioteca y sus rutas hijas de `/` y `/juegos/*` a `/games/*`.
