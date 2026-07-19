@@ -1,6 +1,6 @@
 # SPEC 03 — Página "Acerca de" y formulario de contacto
 
-> **Estado:** Aprobado
+> **Estado:** Implementado
 > **Depende de:** SPEC 02
 > **Fecha:** 2026-07-19
 > **Objetivo:** Implementar la página "Acerca de" (`/about`) del template `references/templates/home-about/` con su formulario de contacto funcional, que envía el mensaje por correo mediante Resend (modo sandbox) usando una Server Action.
