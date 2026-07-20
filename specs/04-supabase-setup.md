@@ -1,6 +1,6 @@
 # SPEC 04 — Integración base de Supabase
 
-> **Estado:** Aprobado
+> **Estado:** Implementado
 > **Depende de:** SPEC 03 (convención `.env.template` / `.gitignore` de variables de entorno)
 > **Fecha:** 2026-07-20
 > **Objetivo:** Dejar la integración base de Supabase (clientes browser/server con `@supabase/ssr`, proxy de refresco de sesión y variables de entorno) conectada y verificada, como cimiento para specs futuros de auth real, scores persistentes, realtime y Edge Functions.
