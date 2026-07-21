@@ -1,6 +1,6 @@
 # SPEC 05 — Juego real: Rocas (Asteroids)
 
-> **Estado:** Aprobado
+> **Estado:** Implementado
 > **Depende de:** SPEC 01 (rutas `/games/[id]/jugar`, `GamePlayer`, HUD, modal de fin de partida, `av_scores` en `localStorage`)
 > **Fecha:** 2026-07-21
 > **Objetivo:** Portar el juego `references/started-games/02-asteroids/game.js` a un componente cliente en canvas (`AsteroidsGame`) e integrarlo en `/games/rocas/jugar`, reemplazando la simulación decorativa por el juego real, conectado al HUD, pausa, botón FIN y modal de guardado de puntuación ya existentes de la plataforma.
