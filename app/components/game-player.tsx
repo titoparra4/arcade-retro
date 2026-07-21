@@ -1,8 +1,12 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Game } from "../data";
+import {
+  AsteroidsGame,
+  type AsteroidsGameHandle,
+} from "./games/asteroids-game";
 import { useUser } from "./user-context";
 
 function saveScore(entry: { game: string; score: number; name: string }) {
@@ -16,39 +20,57 @@ function saveScore(entry: { game: string; score: number; name: string }) {
 export function GamePlayer({ game }: { game: Game }) {
   const router = useRouter();
   const { user } = useUser();
+  const isRocas = game.id === "rocas";
+  const asteroidsRef = useRef<AsteroidsGameHandle>(null);
+
   const [score, setScore] = useState(0);
-  const [lives] = useState(3);
+  const [lives, setLives] = useState(3);
   const [level, setLevel] = useState(1);
+  const [tripleShot, setTripleShot] = useState(0);
   const [paused, setPaused] = useState(false);
   const [over, setOver] = useState(false);
-  const [name, setName] = useState("INVITADO");
+  const [customName, setCustomName] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
-  // El usuario llega tras montar (localStorage); solo pisa el nombre por defecto.
-  useEffect(() => {
-    if (user) setName((n) => (n === "INVITADO" ? user.name : n));
-  }, [user]);
+  // El usuario llega tras montar (localStorage); solo pisa el nombre si no lo editó el jugador.
+  const name = customName ?? user?.name ?? "INVITADO";
 
+  // Simulación decorativa de puntuación/nivel — solo para los juegos que aún no tienen juego real.
   useEffect(() => {
-    if (over || paused) return;
-    const t = setInterval(
-      () => setScore((s) => s + Math.floor(10 + Math.random() * 90)),
-      220,
-    );
+    if (isRocas || over || paused) return;
+    const t = setInterval(() => {
+      setScore((s) => {
+        const next = s + Math.floor(10 + Math.random() * 90);
+        if (next % 2500 < 100) setLevel((l) => l + 1);
+        return next;
+      });
+    }, 220);
     return () => clearInterval(t);
-  }, [over, paused]);
+  }, [isRocas, over, paused]);
 
-  useEffect(() => {
-    if (score > 0 && score % 2500 < 100) setLevel((l) => l + 1);
-  }, [score]);
+  const endGame = () => {
+    if (isRocas) {
+      asteroidsRef.current?.forceGameOver();
+    } else {
+      setOver(true);
+    }
+  };
 
-  const endGame = () => setOver(true);
   const restart = () => {
-    setScore(0);
-    setLevel(1);
     setPaused(false);
     setOver(false);
     setSaved(false);
+    if (isRocas) {
+      asteroidsRef.current?.reset();
+    } else {
+      setScore(0);
+      setLevel(1);
+    }
+  };
+
+  const handleAsteroidsGameOver = (finalScore: number) => {
+    setScore(finalScore);
+    setOver(true);
   };
 
   return (
@@ -73,6 +95,14 @@ export function GamePlayer({ game }: { game: Game }) {
             <div className="l">Nivel</div>
             <div className="v">{String(level).padStart(2, "0")}</div>
           </div>
+          {isRocas && tripleShot > 0 && (
+            <div className="hud-stat">
+              <div className="l">Triple disparo</div>
+              <div className="v" style={{ color: "var(--cyan)" }}>
+                {tripleShot.toFixed(1)}s
+              </div>
+            </div>
+          )}
         </div>
         <div className="hud-actions">
           <button className="btn yellow" onClick={() => setPaused((p) => !p)}>
@@ -90,15 +120,27 @@ export function GamePlayer({ game }: { game: Game }) {
         </div>
       </div>
 
-      <div className="crt">
+      <div className={`crt${isRocas ? " crt--fit" : ""}`}>
         <div className="crt-screen">
-          <div className="game-arena">
-            <div className="grid-floor"></div>
-            <div className="enemy e1"></div>
-            <div className="enemy e2"></div>
-            <div className="enemy e3"></div>
-            <div className="player-ship"></div>
-          </div>
+          {isRocas ? (
+            <AsteroidsGame
+              ref={asteroidsRef}
+              paused={paused}
+              onScoreChange={setScore}
+              onLivesChange={setLives}
+              onLevelChange={setLevel}
+              onGameOver={handleAsteroidsGameOver}
+              onTripleShotChange={setTripleShot}
+            />
+          ) : (
+            <div className="game-arena">
+              <div className="grid-floor"></div>
+              <div className="enemy e1"></div>
+              <div className="enemy e2"></div>
+              <div className="enemy e3"></div>
+              <div className="player-ship"></div>
+            </div>
+          )}
           {paused && (
             <div
               className="crt-content"
@@ -141,7 +183,7 @@ export function GamePlayer({ game }: { game: Game }) {
                 <input
                   value={name}
                   onChange={(e) =>
-                    setName(e.target.value.toUpperCase().slice(0, 10))
+                    setCustomName(e.target.value.toUpperCase().slice(0, 10))
                   }
                   placeholder="TUS INICIALES"
                 />
@@ -162,7 +204,10 @@ export function GamePlayer({ game }: { game: Game }) {
               <button className="btn" onClick={restart}>
                 JUGAR DE NUEVO
               </button>
-              <button className="btn magenta" onClick={() => router.push("/games")}>
+              <button
+                className="btn magenta"
+                onClick={() => router.push("/games")}
+              >
                 VOLVER AL ARCADE
               </button>
             </div>
