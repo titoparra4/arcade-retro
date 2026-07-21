@@ -120,7 +120,7 @@ export function GamePlayer({ game }: { game: Game }) {
         </div>
       </div>
 
-      <div className="crt">
+      <div className={`crt${isRocas ? " crt--fit" : ""}`}>
         <div className="crt-screen">
           {isRocas ? (
             <AsteroidsGame
