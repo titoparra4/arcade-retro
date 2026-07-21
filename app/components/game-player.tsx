@@ -2,20 +2,13 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import type { Game } from "../data";
+import type { Game } from "@/lib/supabase/games";
+import { createClient } from "@/lib/supabase/client";
 import {
   AsteroidsGame,
   type AsteroidsGameHandle,
 } from "./games/asteroids-game";
 import { useUser } from "./user-context";
-
-function saveScore(entry: { game: string; score: number; name: string }) {
-  try {
-    const all = JSON.parse(localStorage.getItem("av_scores") || "[]");
-    all.push({ ...entry, at: Date.now() });
-    localStorage.setItem("av_scores", JSON.stringify(all));
-  } catch {}
-}
 
 export function GamePlayer({ game }: { game: Game }) {
   const router = useRouter();
@@ -31,6 +24,8 @@ export function GamePlayer({ game }: { game: Game }) {
   const [over, setOver] = useState(false);
   const [customName, setCustomName] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   // El usuario llega tras montar (localStorage); solo pisa el nombre si no lo editó el jugador.
   const name = customName ?? user?.name ?? "INVITADO";
@@ -60,6 +55,7 @@ export function GamePlayer({ game }: { game: Game }) {
     setPaused(false);
     setOver(false);
     setSaved(false);
+    setSaveError(null);
     if (isRocas) {
       asteroidsRef.current?.reset();
     } else {
@@ -71,6 +67,21 @@ export function GamePlayer({ game }: { game: Game }) {
   const handleAsteroidsGameOver = (finalScore: number) => {
     setScore(finalScore);
     setOver(true);
+  };
+
+  const handleSaveScore = async () => {
+    setSaving(true);
+    setSaveError(null);
+    const supabase = createClient();
+    const { error } = await supabase
+      .from("scores")
+      .insert({ game_id: game.id, player_name: name, score });
+    setSaving(false);
+    if (error) {
+      setSaveError("No se pudo guardar la puntuación. Intenta de nuevo.");
+      return;
+    }
+    setSaved(true);
   };
 
   return (
@@ -189,16 +200,19 @@ export function GamePlayer({ game }: { game: Game }) {
                 />
                 <button
                   className="btn yellow"
-                  onClick={() => {
-                    saveScore({ game: game.id, score, name });
-                    setSaved(true);
-                  }}
+                  disabled={saving}
+                  onClick={handleSaveScore}
                 >
-                  GUARDAR PUNTUACIÓN
+                  {saving ? "GUARDANDO…" : "GUARDAR PUNTUACIÓN"}
                 </button>
               </div>
             ) : (
               <div className="toast-saved">▸ PUNTUACIÓN GUARDADA_</div>
+            )}
+            {saveError && (
+              <div className="toast-saved" style={{ color: "var(--magenta)" }}>
+                ▸ {saveError}
+              </div>
             )}
             <div className="actions">
               <button className="btn" onClick={restart}>

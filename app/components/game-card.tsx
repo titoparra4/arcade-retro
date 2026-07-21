@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useRef, type MouseEvent } from "react";
-import type { Game } from "../data";
+import type { Game } from "@/lib/supabase/games";
 
 export function GameCard({ game }: { game: Game }) {
   const router = useRouter();
