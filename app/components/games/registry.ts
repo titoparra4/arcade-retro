@@ -2,6 +2,7 @@ import type { ForwardRefExoticComponent, RefAttributes } from "react";
 import { AsteroidsGame } from "./asteroids-game";
 import { BloqueBusterGame } from "./bloque-buster-game";
 import { CaidaGame } from "./caida-game";
+import { SerpentinaGame } from "./serpentina-game";
 
 // Contrato compartido: todo componente de juego real se registra aquí para que
 // game-player.tsx lo monte sin necesitar un if/else dedicado por juego.
@@ -30,4 +31,5 @@ export const GAME_REGISTRY: Partial<Record<string, GameRegistryEntry>> = {
   rocas: { Component: AsteroidsGame, extraStatLabel: "Triple disparo" },
   caida: { Component: CaidaGame },
   "bloque-buster": { Component: BloqueBusterGame },
+  serpentina: { Component: SerpentinaGame },
 };
