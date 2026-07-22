@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { GAMES, seededScores } from "../../data";
+import { getGame, getTopScores } from "@/lib/supabase/games";
 
 export default async function GameDetail({
   params,
@@ -8,11 +8,10 @@ export default async function GameDetail({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const game = GAMES.find((g) => g.id === id);
+  const game = await getGame(id);
   if (!game) notFound();
 
-  // Misma semilla que el template para que el leaderboard sea estable
-  const scores = seededScores(id.length * 17 + 3, 10);
+  const scores = await getTopScores(id, 10);
 
   return (
     <div className="av-detail fade-in">
@@ -32,7 +31,7 @@ export default async function GameDetail({
           <div className="stat-strip">
             <div>
               <div className="l">Partidas</div>
-              <div className="v">{game.plays}</div>
+              <div className="v">{game.plays.toLocaleString("es-ES")}</div>
             </div>
             <div>
               <div className="l">Mejor global</div>
@@ -73,6 +72,17 @@ export default async function GameDetail({
       <aside>
         <div className="leaderboard">
           <h3>MEJORES PUNTUACIONES</h3>
+          {scores.length === 0 && (
+            <div
+              style={{
+                textAlign: "center",
+                padding: "32px 12px",
+                color: "var(--ink-faint)",
+              }}
+            >
+              Aún nadie ha jugado — sé el primero
+            </div>
+          )}
           {scores.map((r, i) => (
             <div
               key={r.name}
