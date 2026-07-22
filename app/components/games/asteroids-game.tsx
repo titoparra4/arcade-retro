@@ -7,6 +7,7 @@ import {
   useImperativeHandle,
   useRef,
 } from "react";
+import type { GameComponentHandle, GameComponentProps } from "./registry";
 
 const W = 800;
 const H = 600;
@@ -397,19 +398,8 @@ function nextLevel(data: GameData) {
 }
 
 // ── Componente ────────────────────────────────────────────────────────────
-export interface AsteroidsGameProps {
-  paused: boolean; // el padre controla la pausa vía prop
-  onScoreChange: (score: number) => void;
-  onLivesChange: (lives: number) => void;
-  onLevelChange: (level: number) => void;
-  onGameOver: (finalScore: number) => void;
-  onTripleShotChange: (secondsLeft: number) => void; // 0 = inactivo
-}
-
-export interface AsteroidsGameHandle {
-  reset: () => void; // reinicia el juego real (usado por "JUGAR DE NUEVO")
-  forceGameOver: () => void; // usado por el botón FIN ("abandonar partida")
-}
+export type AsteroidsGameProps = GameComponentProps;
+export type AsteroidsGameHandle = GameComponentHandle;
 
 interface ReportedState {
   score: number;
@@ -428,7 +418,7 @@ export const AsteroidsGame = forwardRef<
     onLivesChange,
     onLevelChange,
     onGameOver,
-    onTripleShotChange,
+    onExtraStatChange,
   },
   ref,
 ) {
@@ -440,7 +430,7 @@ export const AsteroidsGame = forwardRef<
     onLivesChange,
     onLevelChange,
     onGameOver,
-    onTripleShotChange,
+    onExtraStatChange,
   });
   const reportedRef = useRef<ReportedState>({
     score: 0,
@@ -455,7 +445,7 @@ export const AsteroidsGame = forwardRef<
     onLivesChange,
     onLevelChange,
     onGameOver,
-    onTripleShotChange,
+    onExtraStatChange,
   };
 
   const reset = useCallback(() => {
@@ -464,7 +454,7 @@ export const AsteroidsGame = forwardRef<
     callbacksRef.current.onScoreChange(0);
     callbacksRef.current.onLivesChange(3);
     callbacksRef.current.onLevelChange(1);
-    callbacksRef.current.onTripleShotChange(0);
+    callbacksRef.current.onExtraStatChange(0);
   }, []);
 
   const forceGameOver = useCallback(() => {
@@ -621,7 +611,7 @@ export const AsteroidsGame = forwardRef<
       );
       if (tripleShot !== reported.tripleShot) {
         reported.tripleShot = tripleShot;
-        cb.onTripleShotChange(tripleShot);
+        cb.onExtraStatChange(tripleShot);
       }
     }
 
