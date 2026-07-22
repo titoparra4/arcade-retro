@@ -1,6 +1,6 @@
 # SPEC 09 — Juego real: Serpentina (Snake)
 
-> **Estado:** Aprobado
+> **Estado:** Implementado
 > **Depende de:** SPEC 01 (rutas `/games/[id]/jugar`, `GamePlayer`, HUD, modal de fin de partida), SPEC 05 (contrato `GameComponentProps`/`GameComponentHandle`, `GAME_REGISTRY`), SPEC 06 (tabla `games`/`scores` en Supabase, fila `serpentina` ya sembrada), SPEC 07 (convención sin sonido, estado mutable en `useRef`, loop con `dt` capado)
 > **Fecha:** 2026-07-23
 > **Objetivo:** Crear desde cero un componente cliente en canvas (`SerpentinaGame`) que implemente Snake clásico —movimiento en grilla 40×30, frutas dibujadas con sprites reales elegidas al azar entre 21 variedades, velocidad progresiva por nivel— e integrarlo en `/games/serpentina/jugar`, reemplazando la simulación decorativa ya sembrada en Supabase.
@@ -125,24 +125,24 @@ Convenciones:
 
 ## Criterios de aceptación
 
-- [ ] `npm run build` termina sin errores ni warnings de TypeScript.
-- [ ] `/games/serpentina/jugar` carga sin errores en consola, con el Snake real en canvas en vez de la simulación decorativa.
-- [ ] La serpiente se mueve con las 4 flechas; no es posible invertir de golpe hacia la dirección opuesta a la actual (p. ej. moviéndose a la derecha, presionar izquierda no tiene efecto hasta cambiar de eje).
-- [ ] La fruta se dibuja con un sprite real del atlas (no un rectángulo de color) y, al ser comida, la siguiente fruta aparece con una variedad elegida al azar entre las 21 disponibles, en una celda libre.
-- [ ] Comer una fruta suma exactamente 10 puntos y agrega un segmento al final de la serpiente.
-- [ ] El nivel sube cada 5 frutas comidas y la velocidad de movimiento aumenta según `moveInterval = max(60, 150 - (nivel-1)*10)`.
-- [ ] Chocar contra cualquier borde del tablero termina la partida de inmediato.
-- [ ] Chocar contra cualquier segmento del propio cuerpo termina la partida de inmediato.
-- [ ] El HUD exterior (Jugador/Puntuación/Vidas/Nivel) refleja en vivo el score y el nivel reales; "Vidas" muestra un único ♥ fijo desde el inicio hasta el game over.
-- [ ] No se muestra ningún stat extra en el HUD (el slot de stat extra no se usa para este juego).
-- [ ] El botón PAUSA congela el loop del juego por completo (la serpiente deja de moverse); REANUDAR continúa donde quedó.
-- [ ] El botón FIN termina la partida de inmediato con la puntuación acumulada hasta ese momento y abre el modal de fin de partida.
-- [ ] "GUARDAR PUNTUACIÓN" en el modal añade una fila real a `scores` en Supabase con `game_id = 'serpentina'`.
-- [ ] "JUGAR DE NUEVO" reinicia el juego real desde cero (serpiente de 3 segmentos centrada, score 0, nivel 1, nueva fruta aleatoria) sin recargar la página.
-- [ ] "SALIR" navega a `/games/serpentina` sin errores.
-- [ ] Las flechas no hacen scroll de la página mientras se juega.
-- [ ] Los demás juegos (`rocas`, `caida`, `bloque-buster` y los decorativos) siguen sin cambios.
-- [ ] La fila `serpentina` en la tabla `games` de Supabase no cambia (metadata ya sembrada por SPEC 06).
+- [x] `npm run build` termina sin errores ni warnings de TypeScript.
+- [x] `/games/serpentina/jugar` carga sin errores en consola, con el Snake real en canvas en vez de la simulación decorativa.
+- [x] La serpiente se mueve con las 4 flechas; no es posible invertir de golpe hacia la dirección opuesta a la actual (p. ej. moviéndose a la derecha, presionar izquierda no tiene efecto hasta cambiar de eje).
+- [x] La fruta se dibuja con un sprite real del atlas (no un rectángulo de color) y, al ser comida, la siguiente fruta aparece con una variedad elegida al azar entre las 21 disponibles, en una celda libre.
+- [x] Comer una fruta suma exactamente 10 puntos y agrega un segmento al final de la serpiente.
+- [x] El nivel sube cada 5 frutas comidas y la velocidad de movimiento aumenta según `moveInterval = max(60, 150 - (nivel-1)*10)`.
+- [x] Chocar contra cualquier borde del tablero termina la partida de inmediato.
+- [x] Chocar contra cualquier segmento del propio cuerpo termina la partida de inmediato.
+- [x] El HUD exterior (Jugador/Puntuación/Vidas/Nivel) refleja en vivo el score y el nivel reales; "Vidas" muestra un único ♥ fijo desde el inicio hasta el game over.
+- [x] No se muestra ningún stat extra en el HUD (el slot de stat extra no se usa para este juego).
+- [x] El botón PAUSA congela el loop del juego por completo (la serpiente deja de moverse); REANUDAR continúa donde quedó.
+- [x] El botón FIN termina la partida de inmediato con la puntuación acumulada hasta ese momento y abre el modal de fin de partida.
+- [x] "GUARDAR PUNTUACIÓN" en el modal añade una fila real a `scores` en Supabase con `game_id = 'serpentina'`.
+- [x] "JUGAR DE NUEVO" reinicia el juego real desde cero (serpiente de 3 segmentos centrada, score 0, nivel 1, nueva fruta aleatoria) sin recargar la página.
+- [x] "SALIR" navega a `/games/serpentina` sin errores.
+- [x] Las flechas no hacen scroll de la página mientras se juega.
+- [x] Los demás juegos (`rocas`, `caida`, `bloque-buster` y los decorativos) siguen sin cambios.
+- [x] La fila `serpentina` en la tabla `games` de Supabase no cambia (metadata ya sembrada por SPEC 06).
 
 ## Decisiones
 
