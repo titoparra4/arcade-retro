@@ -4,22 +4,20 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import type { Game } from "@/lib/supabase/games";
 import { createClient } from "@/lib/supabase/client";
-import {
-  AsteroidsGame,
-  type AsteroidsGameHandle,
-} from "./games/asteroids-game";
+import { GAME_REGISTRY, type GameComponentHandle } from "./games/registry";
 import { useUser } from "./user-context";
 
 export function GamePlayer({ game }: { game: Game }) {
   const router = useRouter();
   const { user } = useUser();
-  const isRocas = game.id === "rocas";
-  const asteroidsRef = useRef<AsteroidsGameHandle>(null);
+  const gameEntry = GAME_REGISTRY[game.id];
+  const GameComponent = gameEntry?.Component;
+  const gameRef = useRef<GameComponentHandle>(null);
 
   const [score, setScore] = useState(0);
   const [lives, setLives] = useState(3);
   const [level, setLevel] = useState(1);
-  const [tripleShot, setTripleShot] = useState(0);
+  const [extraStat, setExtraStat] = useState(0);
   const [paused, setPaused] = useState(false);
   const [over, setOver] = useState(false);
   const [customName, setCustomName] = useState<string | null>(null);
@@ -32,7 +30,7 @@ export function GamePlayer({ game }: { game: Game }) {
 
   // Simulación decorativa de puntuación/nivel — solo para los juegos que aún no tienen juego real.
   useEffect(() => {
-    if (isRocas || over || paused) return;
+    if (GameComponent || over || paused) return;
     const t = setInterval(() => {
       setScore((s) => {
         const next = s + Math.floor(10 + Math.random() * 90);
@@ -41,11 +39,11 @@ export function GamePlayer({ game }: { game: Game }) {
       });
     }, 220);
     return () => clearInterval(t);
-  }, [isRocas, over, paused]);
+  }, [GameComponent, over, paused]);
 
   const endGame = () => {
-    if (isRocas) {
-      asteroidsRef.current?.forceGameOver();
+    if (GameComponent) {
+      gameRef.current?.forceGameOver();
     } else {
       setOver(true);
     }
@@ -56,15 +54,15 @@ export function GamePlayer({ game }: { game: Game }) {
     setOver(false);
     setSaved(false);
     setSaveError(null);
-    if (isRocas) {
-      asteroidsRef.current?.reset();
+    if (GameComponent) {
+      gameRef.current?.reset();
     } else {
       setScore(0);
       setLevel(1);
     }
   };
 
-  const handleAsteroidsGameOver = (finalScore: number) => {
+  const handleGameOver = (finalScore: number) => {
     setScore(finalScore);
     setOver(true);
   };
@@ -106,11 +104,11 @@ export function GamePlayer({ game }: { game: Game }) {
             <div className="l">Nivel</div>
             <div className="v">{String(level).padStart(2, "0")}</div>
           </div>
-          {isRocas && tripleShot > 0 && (
+          {GameComponent && gameEntry?.extraStatLabel && extraStat > 0 && (
             <div className="hud-stat">
-              <div className="l">Triple disparo</div>
+              <div className="l">{gameEntry.extraStatLabel}</div>
               <div className="v" style={{ color: "var(--cyan)" }}>
-                {tripleShot.toFixed(1)}s
+                {extraStat.toFixed(1)}s
               </div>
             </div>
           )}
@@ -131,17 +129,17 @@ export function GamePlayer({ game }: { game: Game }) {
         </div>
       </div>
 
-      <div className={`crt${isRocas ? " crt--fit" : ""}`}>
+      <div className={`crt${GameComponent ? " crt--fit" : ""}`}>
         <div className="crt-screen">
-          {isRocas ? (
-            <AsteroidsGame
-              ref={asteroidsRef}
+          {GameComponent ? (
+            <GameComponent
+              ref={gameRef}
               paused={paused}
               onScoreChange={setScore}
               onLivesChange={setLives}
               onLevelChange={setLevel}
-              onGameOver={handleAsteroidsGameOver}
-              onTripleShotChange={setTripleShot}
+              onGameOver={handleGameOver}
+              onExtraStatChange={setExtraStat}
             />
           ) : (
             <div className="game-arena">

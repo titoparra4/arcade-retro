@@ -6,9 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-**Arcade Vault** — a platform for playing games online and competing for the highest score. Development follows spec-driven design using the `/spec` and `/spec-impl` skills (from `Klerith/fernando-skills`, installed via `npx skills@latest add Klerith/fernando-skills`).
-
-
+**Arcade Vault** — a platform for playing games online and competing for the highest score. Development follows spec-driven design using the `/spec` and `/spec-impl` skills (from `Klerith/fernando-skills`, installed via `npx skills@latest add Klerith/fernando-skills`). Specs that add a new playable game with leaderboard integration (porting from `references/started-games/` or building from scratch) are implemented with `/add-game` instead of `/spec-impl` — see `.agents/skills/add-game/SKILL.md`.
 
 There is no test setup yet.
 
