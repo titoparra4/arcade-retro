@@ -1,5 +1,6 @@
 import type { ForwardRefExoticComponent, RefAttributes } from "react";
 import { AsteroidsGame } from "./asteroids-game";
+import { BloqueBusterGame } from "./bloque-buster-game";
 import { CaidaGame } from "./caida-game";
 
 // Contrato compartido: todo componente de juego real se registra aquí para que
@@ -9,7 +10,7 @@ export interface GameComponentProps {
   onScoreChange: (score: number) => void;
   onLivesChange: (lives: number) => void;
   onLevelChange: (level: number) => void;
-  onGameOver: (finalScore: number) => void;
+  onGameOver: (finalScore: number, won?: boolean) => void; // won: true solo al completar el último nivel
   onExtraStatChange: (value: number) => void; // stat extra opcional en el HUD (p. ej. segundos de un power-up); 0 = inactivo
 }
 
@@ -28,4 +29,5 @@ export interface GameRegistryEntry {
 export const GAME_REGISTRY: Partial<Record<string, GameRegistryEntry>> = {
   rocas: { Component: AsteroidsGame, extraStatLabel: "Triple disparo" },
   caida: { Component: CaidaGame },
+  "bloque-buster": { Component: BloqueBusterGame },
 };
