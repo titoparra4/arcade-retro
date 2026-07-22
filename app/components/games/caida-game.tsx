@@ -6,6 +6,7 @@ import {
   useEffect,
   useImperativeHandle,
   useRef,
+  useState,
 } from "react";
 import type { GameComponentHandle, GameComponentProps } from "./registry";
 
@@ -23,7 +24,7 @@ const CONTROL_CODES = new Set([
   "Space",
 ]);
 
-type Cell = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
+type Cell = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7;
 
 const COLORS: (string | null)[] = [
   null,
@@ -34,7 +35,6 @@ const COLORS: (string | null)[] = [
   "#e57373", // Z - red
   "#90caf9", // J - pale blue
   "#ffb74d", // L - orange
-  "#9e9e9e", // N - tuerca (gris metálico)
 ];
 
 const PIECES: (Cell[][] | null)[] = [
@@ -74,11 +74,6 @@ const PIECES: (Cell[][] | null)[] = [
     [7, 7, 7],
     [0, 0, 0],
   ], // L
-  [
-    [8, 8, 8],
-    [8, 0, 8],
-    [8, 8, 8],
-  ], // N (tuerca)
 ];
 
 const LINE_SCORES = [0, 100, 300, 500, 800];
@@ -107,7 +102,7 @@ function createBoard(): Cell[][] {
 }
 
 function randomPiece(): Piece {
-  const type = (Math.floor(Math.random() * 8) + 1) as Cell;
+  const type = (Math.floor(Math.random() * 7) + 1) as Cell;
   const base = PIECES[type]!;
   const shape = base.map((row) => [...row]) as Cell[][];
   return {
@@ -232,17 +227,41 @@ function createInitialGameData(): GameData {
   };
 }
 
+type SkinStyle = "outline" | "solid";
+
+function hexToRgba(hex: string, alpha: number) {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
 function drawBlockAtPixel(
   ctx: CanvasRenderingContext2D,
   px: number,
   py: number,
   colorIndex: Cell,
   size: number,
+  style: SkinStyle,
   alpha = 1,
 ) {
   if (!colorIndex) return;
+  const color = COLORS[colorIndex]!;
+  if (style === "outline") {
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 8;
+    ctx.fillStyle = hexToRgba(color, 0.18);
+    ctx.fillRect(px + 3, py + 3, size - 6, size - 6);
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = color;
+    ctx.strokeRect(px + 3, py + 3, size - 6, size - 6);
+    ctx.restore();
+    return;
+  }
   ctx.globalAlpha = alpha;
-  ctx.fillStyle = COLORS[colorIndex]!;
+  ctx.fillStyle = color;
   ctx.fillRect(px + 1, py + 1, size - 2, size - 2);
   ctx.fillStyle = "rgba(255,255,255,0.12)";
   ctx.fillRect(px + 1, py + 1, size - 2, 4);
@@ -255,9 +274,10 @@ function drawBlock(
   y: number,
   colorIndex: Cell,
   size: number,
+  style: SkinStyle,
   alpha = 1,
 ) {
-  drawBlockAtPixel(ctx, x * size, y * size, colorIndex, size, alpha);
+  drawBlockAtPixel(ctx, x * size, y * size, colorIndex, size, style, alpha);
 }
 
 function drawGrid(ctx: CanvasRenderingContext2D) {
@@ -277,31 +297,20 @@ function drawGrid(ctx: CanvasRenderingContext2D) {
   }
 }
 
-const NEXT_BOX_W = 100;
-const NEXT_BOX_H = 100;
-const NEXT_BOX_MARGIN = 10;
-const NEXT_BLOCK = 18;
+const NEXT_CANVAS_SIZE = 130;
+const NEXT_BLOCK = 26;
 
-function drawNextPreview(ctx: CanvasRenderingContext2D, next: Piece) {
-  const boxX = W - NEXT_BOX_W - NEXT_BOX_MARGIN;
-  const boxY = NEXT_BOX_MARGIN;
-
-  ctx.fillStyle = "rgba(10,10,20,0.75)";
-  ctx.fillRect(boxX, boxY, NEXT_BOX_W, NEXT_BOX_H);
-  ctx.strokeStyle = "rgba(255,255,255,0.25)";
-  ctx.lineWidth = 1;
-  ctx.strokeRect(boxX + 0.5, boxY + 0.5, NEXT_BOX_W - 1, NEXT_BOX_H - 1);
-
-  ctx.fillStyle = "rgba(255,255,255,0.4)";
-  ctx.font = "9px monospace";
-  ctx.textBaseline = "top";
-  ctx.fillText("SIG", boxX + 6, boxY + 5);
-
+function drawNextCanvas(
+  ctx: CanvasRenderingContext2D,
+  next: Piece,
+  style: SkinStyle,
+) {
+  ctx.clearRect(0, 0, NEXT_CANVAS_SIZE, NEXT_CANVAS_SIZE);
   const { shape } = next;
-  const offX =
-    boxX + Math.floor((NEXT_BOX_W - shape[0].length * NEXT_BLOCK) / 2);
-  const offY =
-    boxY + Math.floor((NEXT_BOX_H - shape.length * NEXT_BLOCK) / 2) + 6;
+  const offX = Math.floor(
+    (NEXT_CANVAS_SIZE - shape[0].length * NEXT_BLOCK) / 2,
+  );
+  const offY = Math.floor((NEXT_CANVAS_SIZE - shape.length * NEXT_BLOCK) / 2);
   for (let r = 0; r < shape.length; r++)
     for (let c = 0; c < shape[r].length; c++)
       drawBlockAtPixel(
@@ -310,17 +319,18 @@ function drawNextPreview(ctx: CanvasRenderingContext2D, next: Piece) {
         offY + r * NEXT_BLOCK,
         shape[r][c],
         NEXT_BLOCK,
+        style,
       );
 }
 
-function draw(ctx: CanvasRenderingContext2D, data: GameData) {
+function draw(ctx: CanvasRenderingContext2D, data: GameData, style: SkinStyle) {
   ctx.fillStyle = "#000";
   ctx.fillRect(0, 0, W, H);
   drawGrid(ctx);
 
   for (let r = 0; r < ROWS; r++)
     for (let c = 0; c < COLS; c++)
-      drawBlock(ctx, c, r, data.board[r][c], BLOCK);
+      drawBlock(ctx, c, r, data.board[r][c], BLOCK, style);
 
   const gy = ghostY(data);
   for (let r = 0; r < data.current.shape.length; r++)
@@ -332,6 +342,7 @@ function draw(ctx: CanvasRenderingContext2D, data: GameData) {
           gy + r,
           data.current.shape[r][c],
           BLOCK,
+          style,
           0.2,
         );
 
@@ -343,10 +354,21 @@ function draw(ctx: CanvasRenderingContext2D, data: GameData) {
         data.current.y + r,
         data.current.shape[r][c],
         BLOCK,
+        style,
       );
-
-  drawNextPreview(ctx, data.next);
 }
+
+type Skin = "neon" | "clasico";
+
+const SKIN_STYLES: Record<Skin, SkinStyle> = {
+  neon: "outline",
+  clasico: "solid",
+};
+
+const SKIN_OPTIONS: { value: Skin; label: string }[] = [
+  { value: "neon", label: "Neón" },
+  { value: "clasico", label: "Clásico" },
+];
 
 export type CaidaGameProps = GameComponentProps;
 export type CaidaGameHandle = GameComponentHandle;
@@ -369,8 +391,12 @@ export const CaidaGame = forwardRef<CaidaGameHandle, CaidaGameProps>(
     ref,
   ) {
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
+    const nextCanvasRef = useRef<HTMLCanvasElement | null>(null);
     const dataRef = useRef<GameData>(createInitialGameData());
     const pausedRef = useRef(paused);
+    const [skin, setSkin] = useState<Skin>("neon");
+    const skinRef = useRef<Skin>(skin);
+    skinRef.current = skin;
     const callbacksRef = useRef({
       onScoreChange,
       onLivesChange,
@@ -413,6 +439,7 @@ export const CaidaGame = forwardRef<CaidaGameHandle, CaidaGameProps>(
       if (!canvas) return;
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
+      const nextCtx = nextCanvasRef.current?.getContext("2d") ?? null;
 
       canvas.focus();
       callbacksRef.current.onLivesChange(1);
@@ -503,7 +530,9 @@ export const CaidaGame = forwardRef<CaidaGameHandle, CaidaGameProps>(
           }
         }
 
-        draw(ctx!, data);
+        const style = SKIN_STYLES[skinRef.current];
+        draw(ctx!, data, style);
+        if (nextCtx) drawNextCanvas(nextCtx, data.next, style);
         reportChanges();
 
         if (data.state === "gameover") {
@@ -527,19 +556,67 @@ export const CaidaGame = forwardRef<CaidaGameHandle, CaidaGameProps>(
     }, []);
 
     return (
-      <canvas
-        ref={canvasRef}
-        width={W}
-        height={H}
-        tabIndex={0}
-        style={{
-          position: "absolute",
-          inset: 0,
-          width: "100%",
-          height: "100%",
-          outline: "none",
-        }}
-      />
+      <div className="tetris-layout">
+        <canvas
+          ref={canvasRef}
+          width={W}
+          height={H}
+          tabIndex={0}
+          className="tetris-board"
+        />
+        <div className="tetris-side">
+          <div className="tetris-side-block">
+            <div className="tetris-label">Next</div>
+            <div className="tetris-next">
+              <canvas
+                ref={nextCanvasRef}
+                width={NEXT_CANVAS_SIZE}
+                height={NEXT_CANVAS_SIZE}
+              />
+            </div>
+          </div>
+
+          <div className="tetris-side-block">
+            <div className="tetris-label">Skin</div>
+            <div className="tetris-select-wrap">
+              <select
+                className="tetris-select"
+                value={skin}
+                onChange={(e) => setSkin(e.target.value as Skin)}
+              >
+                {SKIN_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="tetris-side-block">
+            <div className="tetris-label">Controls</div>
+            <div className="tetris-controls">
+              <div className="tetris-control-row">
+                <span className="tetris-key">←</span>
+                <span className="tetris-key">→</span>
+                <span>mover</span>
+              </div>
+              <div className="tetris-control-row">
+                <span className="tetris-key">↑</span>
+                <span>rotar</span>
+              </div>
+              <div className="tetris-control-row">
+                <span className="tetris-key">↓</span>
+                <span>bajar</span>
+              </div>
+              <div className="tetris-control-row">
+                <span className="tetris-key tetris-key--wide">Space</span>
+                <span>caída</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     );
   },
 );
