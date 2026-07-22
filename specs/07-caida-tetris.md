@@ -1,6 +1,6 @@
 # SPEC 07 — Juego real: Caída (Tetris)
 
-> **Estado:** Aprobado
+> **Estado:** Implementado
 > **Depende de:** SPEC 01 (rutas `/games/[id]/jugar`, `GamePlayer`, HUD, modal de fin de partida), SPEC 05 (contrato `GameComponentProps`/`GameComponentHandle`, `GAME_REGISTRY`), SPEC 06 (tabla `games`/`scores` en Supabase, fila `caida` ya sembrada)
 > **Fecha:** 2026-07-22
 > **Objetivo:** Portar `references/started-games/03-tetris/game.js` a un componente cliente en canvas (`CaidaGame`) e integrarlo en `/games/caida/jugar`, reemplazando la simulación decorativa del juego "CAÍDA" (ya sembrado en Supabase como Tetris) por el Tetris real, conectado al HUD, pausa, botón FIN y modal de guardado de puntuación ya existentes.
