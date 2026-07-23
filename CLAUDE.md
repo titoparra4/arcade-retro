@@ -23,6 +23,7 @@ All three custom skills live in `.agents/skills/` (installed originally from `Kl
 Subagents live in `.claude/agents/`:
 
 - **`game-planner`** (`.claude/agents/game-planner.md`) — plans and decides **which retro game to add next**. It reads the current catalog (`references/implemented-games.md`, `GAME_REGISTRY`, the Supabase `games` table) and its own memory, then returns a prioritized recommendation with concrete metadata ready to hand off to `/add-game`. It only recommends — it never writes game code, specs, or registry entries. Its persistent memory of past suggestions is `references/game-suggestions.md` (the only file it writes; git-tracked so suggestions are reviewable). Invoke it when choosing the next game to port.
+- **`game-jam`** (`.claude/agents/game-jam.md`) — given a **theme**, picks one retro game that fits and generates **at least two complete specs for that same game** — a base playable spec plus one or more extension specs that depend on it — saved as `Borrador` directly in `specs/game-jam/` (naming `<game-id>-NN-<slug>.md`), styled exactly like specs 07–09. It reads the catalog to choose a non-duplicate game and fix concrete metadata, but **only writes to `specs/game-jam/`** — never game code, `GAME_REGISTRY`, or the Supabase `games` table, and never auto-approves. Invoke it to kick off a themed game jam; then review/approve the specs and hand the base to `/add-game` and extensions to `/spec-impl`.
 
 Workflow conventions:
 
