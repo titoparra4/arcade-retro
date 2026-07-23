@@ -20,6 +20,10 @@ All three custom skills live in `.agents/skills/` (installed originally from `Kl
 - **`/spec-impl`** (`.agents/skills/spec-impl/`) — implement an already-**Aprobado** spec on its own git branch (`spec-NN-slug`), pausing after each step for review.
 - **`/add-game`** (`.agents/skills/add-game/`) — specialized `/spec-impl` for "add a new playable game" specs. Can also **create** the spec first (following `/spec`) if it doesn't exist. Implements via a fixed recipe: game metadata → canvas component → `GAME_REGISTRY` entry → Supabase `games` insert → build + playtest → close. Read `.agents/skills/add-game/SKILL.md` and its `template.md` before adding a game.
 
+Subagents live in `.claude/agents/`:
+
+- **`game-planner`** (`.claude/agents/game-planner.md`) — plans and decides **which retro game to add next**. It reads the current catalog (`references/implemented-games.md`, `GAME_REGISTRY`, the Supabase `games` table) and its own memory, then returns a prioritized recommendation with concrete metadata ready to hand off to `/add-game`. It only recommends — it never writes game code, specs, or registry entries. Its persistent memory of past suggestions is `references/game-suggestions.md` (the only file it writes; git-tracked so suggestions are reviewable). Invoke it when choosing the next game to port.
+
 Workflow conventions:
 
 - **Tito commits each step himself** — do not commit on his behalf, and check for secrets before every pause.
