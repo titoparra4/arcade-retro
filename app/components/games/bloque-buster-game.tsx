@@ -111,6 +111,27 @@ function hexToRgba(hex: string, alpha: number) {
   return `rgba(${r},${g},${b},${alpha})`;
 }
 
+// Traza un rectángulo redondeado a mano. NO se usa ctx.roundRect: no existe en
+// Safari < 16.4 ni en WebViews/Chrome antiguos de Android, y al lanzar dentro del
+// loop de render congelaría el juego en móviles físicos con navegador viejo.
+function pathRoundRect(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number,
+) {
+  const radius = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.arcTo(x + w, y, x + w, y + h, radius);
+  ctx.arcTo(x + w, y + h, x, y + h, radius);
+  ctx.arcTo(x, y + h, x, y, radius);
+  ctx.arcTo(x, y, x + w, y, radius);
+  ctx.closePath();
+}
+
 const EXPLOSION_DURATION = 150; // ms
 
 interface LevelBlock {
@@ -421,14 +442,12 @@ function drawPaddle(
     ctx.shadowBlur = glow;
   }
   ctx.fillStyle = color;
-  ctx.beginPath();
-  ctx.roundRect(paddle.x, paddle.y, paddle.w, paddle.h, 6);
+  pathRoundRect(ctx, paddle.x, paddle.y, paddle.w, paddle.h, 6);
   ctx.fill();
   ctx.restore();
   // Brillo superior
   ctx.fillStyle = "rgba(255,255,255,0.28)";
-  ctx.beginPath();
-  ctx.roundRect(paddle.x + 4, paddle.y + 2, paddle.w - 8, 4, 3);
+  pathRoundRect(ctx, paddle.x + 4, paddle.y + 2, paddle.w - 8, 4, 3);
   ctx.fill();
 }
 

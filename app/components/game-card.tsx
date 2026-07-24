@@ -1,14 +1,13 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useRef, type MouseEvent } from "react";
 import type { Game } from "@/lib/supabase/games";
 
 export function GameCard({ game }: { game: Game }) {
-  const router = useRouter();
-  const tiltRef = useRef<HTMLDivElement>(null);
+  const tiltRef = useRef<HTMLAnchorElement>(null);
 
-  const onMove = (e: MouseEvent<HTMLDivElement>) => {
+  const onMove = (e: MouseEvent<HTMLAnchorElement>) => {
     const el = tiltRef.current;
     if (!el) return;
     const r = el.getBoundingClientRect();
@@ -23,15 +22,16 @@ export function GameCard({ game }: { game: Game }) {
     el.style.transform = "";
   };
 
-  const goDetail = () => router.push(`/games/${game.id}`);
-
+  // La tarjeta entera es un enlace real (<a>) al detalle: en iOS/Safari táctil
+  // navega al primer tap, sin el problema de "doble tap" que sufren los <div>
+  // con onClick + :hover. El botón JUGAR es solo visual dentro del mismo enlace.
   return (
-    <div
+    <Link
       ref={tiltRef}
+      href={`/games/${game.id}`}
       className="card"
       onMouseMove={onMove}
       onMouseLeave={onLeave}
-      onClick={goDetail}
     >
       <div className="cover">
         <div className={"cover-bg " + game.cover}></div>
@@ -45,7 +45,7 @@ export function GameCard({ game }: { game: Game }) {
             <span>MEJOR PUNTUACIÓN</span>
             <b>{game.best.toLocaleString("es-ES")}</b>
           </div>
-          <button
+          <span
             className={
               "btn " +
               (game.color === "magenta"
@@ -54,15 +54,11 @@ export function GameCard({ game }: { game: Game }) {
                   ? "yellow"
                   : "")
             }
-            onClick={(e) => {
-              e.stopPropagation();
-              goDetail();
-            }}
           >
             JUGAR
-          </button>
+          </span>
         </div>
       </div>
-    </div>
+    </Link>
   );
 }
