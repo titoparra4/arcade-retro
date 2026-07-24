@@ -7,10 +7,72 @@ import {
   useImperativeHandle,
   useRef,
 } from "react";
-import type { GameComponentHandle, GameComponentProps } from "./registry";
+import type {
+  GameComponentHandle,
+  GameComponentProps,
+  SkinId,
+} from "./registry";
 
 const W = 800;
 const H = 600;
+
+// ── Skins ───────────────────────────────────────────────────────────────────
+// Cada paleta se diseña contra el fondo oscuro (--bg #0a0a0f). Ningún color
+// clave puede fundirse con el fondo: todos tienen luminancia real sobre negro.
+interface Palette {
+  bg: string; // fondo del canvas del juego
+  ship: string; // trazo de la nave
+  asteroid: string; // trazo de los asteroides
+  bullet: string; // relleno de las balas
+  particle: string; // trazo de partículas de explosión (se combina con alpha)
+  powerup: string; // trazo + texto del power-up "3x"
+  thruster: string; // llama del propulsor
+  glow: number; // shadowBlur; 0 = sin glow (clásico), >0 = fósforo/neón
+}
+
+const SKIN_PALETTES: Record<SkinId, Palette> = {
+  // Vectores blancos sobre negro, como el arcade original de 1979.
+  clasico: {
+    bg: "#000000",
+    ship: "#ffffff",
+    asteroid: "#ffffff",
+    bullet: "#ffffff",
+    particle: "#ffffff",
+    powerup: "#00e5ff",
+    thruster: "#ff8200",
+    glow: 0,
+  },
+  // Neón saturado con glow, apoyado en la paleta de la app (cyan/magenta/
+  // amarillo/verde). Cada elemento tiene su propio color para máximo contraste.
+  neon: {
+    bg: "#05060a",
+    ship: "#00f5ff", // cyan
+    asteroid: "#ff2d95", // magenta (subido en luminancia vs --magenta para no lavarse)
+    bullet: "#f5ff00", // amarillo
+    particle: "#00ff88", // verde
+    powerup: "#00ff88", // verde
+    thruster: "#ff8a00", // naranja cálido
+    glow: 12,
+  },
+  // CRT vintage: monitor de fósforo ámbar con acento verde y bloom suave.
+  retro: {
+    bg: "#080600",
+    ship: "#ffc04a", // ámbar brillante
+    asteroid: "#c9922b", // ámbar/bronce más apagado pero claramente visible
+    bullet: "#ffe08a", // ámbar pálido
+    particle: "#d9a23c",
+    powerup: "#8bd450", // fósforo verde como acento
+    thruster: "#ff6a1a",
+    glow: 5,
+  },
+};
+
+function hexToRgba(hex: string, alpha: number) {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
 
 const POWERUP_DROP_CHANCE = 0.15;
 const POWERUP_DURATION = 5;
@@ -60,11 +122,17 @@ class Bullet {
     if (this.ttl <= 0) this.dead = true;
   }
 
-  draw(ctx: CanvasRenderingContext2D) {
-    ctx.fillStyle = "#fff";
+  draw(ctx: CanvasRenderingContext2D, pal: Palette) {
+    ctx.save();
+    if (pal.glow) {
+      ctx.shadowColor = pal.bullet;
+      ctx.shadowBlur = pal.glow;
+    }
+    ctx.fillStyle = pal.bullet;
     ctx.beginPath();
     ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
     ctx.fill();
+    ctx.restore();
   }
 }
 
@@ -116,11 +184,15 @@ class Asteroid {
     ];
   }
 
-  draw(ctx: CanvasRenderingContext2D) {
+  draw(ctx: CanvasRenderingContext2D, pal: Palette) {
     ctx.save();
     ctx.translate(this.x, this.y);
     ctx.rotate(this.rot);
-    ctx.strokeStyle = "#fff";
+    if (pal.glow) {
+      ctx.shadowColor = pal.asteroid;
+      ctx.shadowBlur = pal.glow;
+    }
+    ctx.strokeStyle = pal.asteroid;
     ctx.lineWidth = 1.5;
     ctx.lineJoin = "round";
     ctx.beginPath();
@@ -159,22 +231,32 @@ class PowerUp {
     if (this.ttl <= 0) this.dead = true;
   }
 
-  draw(ctx: CanvasRenderingContext2D) {
+  draw(ctx: CanvasRenderingContext2D, pal: Palette) {
     if (this.ttl < 2 && Math.floor(this.ttl * 8) % 2 === 0) return;
     const pulse = 0.85 + Math.sin(performance.now() / 150) * 0.15;
     ctx.save();
+    if (pal.glow) {
+      ctx.shadowColor = pal.powerup;
+      ctx.shadowBlur = pal.glow;
+    }
     ctx.translate(this.x, this.y);
     ctx.rotate(Math.PI / 4);
-    ctx.strokeStyle = "#0ff";
+    ctx.strokeStyle = pal.powerup;
     ctx.lineWidth = 2;
     const r = this.radius * pulse;
     ctx.strokeRect(-r, -r, r * 2, r * 2);
     ctx.restore();
-    ctx.fillStyle = "#0ff";
+    ctx.save();
+    if (pal.glow) {
+      ctx.shadowColor = pal.powerup;
+      ctx.shadowBlur = pal.glow;
+    }
+    ctx.fillStyle = pal.powerup;
     ctx.font = "bold 12px monospace";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillText("3x", this.x, this.y);
+    ctx.restore();
   }
 }
 
@@ -245,7 +327,7 @@ class Ship {
     return [new Bullet(ox, oy, this.angle)];
   }
 
-  draw(ctx: CanvasRenderingContext2D) {
+  draw(ctx: CanvasRenderingContext2D, pal: Palette) {
     if (this.dead) return;
     // Parpadeo durante invencibilidad de reaparición
     if (this.invincible > 0 && Math.floor(this.invincible * 8) % 2 === 0)
@@ -254,7 +336,11 @@ class Ship {
     ctx.save();
     ctx.translate(this.x, this.y);
     ctx.rotate(this.angle);
-    ctx.strokeStyle = "#fff";
+    if (pal.glow) {
+      ctx.shadowColor = pal.ship;
+      ctx.shadowBlur = pal.glow;
+    }
+    ctx.strokeStyle = pal.ship;
     ctx.lineWidth = 1.5;
     ctx.lineJoin = "round";
 
@@ -273,7 +359,8 @@ class Ship {
       ctx.moveTo(-8, -4);
       ctx.lineTo(-8 - rand(6, 14), 0);
       ctx.lineTo(-8, 4);
-      ctx.strokeStyle = "rgba(255, 130, 0, 0.85)";
+      ctx.shadowColor = pal.thruster;
+      ctx.strokeStyle = hexToRgba(pal.thruster, 0.85);
       ctx.stroke();
     }
 
@@ -309,9 +396,9 @@ class Particle {
     if (this.ttl <= 0) this.dead = true;
   }
 
-  draw(ctx: CanvasRenderingContext2D) {
+  draw(ctx: CanvasRenderingContext2D, pal: Palette) {
     const alpha = this.ttl / this.life;
-    ctx.strokeStyle = `rgba(255,255,255,${alpha.toFixed(2)})`;
+    ctx.strokeStyle = hexToRgba(pal.particle, Number(alpha.toFixed(2)));
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(this.x, this.y);
@@ -414,6 +501,7 @@ export const AsteroidsGame = forwardRef<
 >(function AsteroidsGame(
   {
     paused,
+    skin,
     onScoreChange,
     onLivesChange,
     onLevelChange,
@@ -425,6 +513,9 @@ export const AsteroidsGame = forwardRef<
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const dataRef = useRef<GameData>(createInitialGameData());
   const pausedRef = useRef(paused);
+  // skinRef: el loop de canvas lee el skin activo sin re-suscribir el efecto.
+  const skinRef = useRef<SkinId>(skin);
+  skinRef.current = skin;
   const callbacksRef = useRef({
     onScoreChange,
     onLivesChange,
@@ -578,14 +669,15 @@ export const AsteroidsGame = forwardRef<
 
     function draw() {
       const data = dataRef.current;
-      ctx!.fillStyle = "#000";
+      const pal = SKIN_PALETTES[skinRef.current];
+      ctx!.fillStyle = pal.bg;
       ctx!.fillRect(0, 0, W, H);
 
-      data.particles.forEach((p) => p.draw(ctx!));
-      data.asteroids.forEach((a) => a.draw(ctx!));
-      data.powerUps.forEach((p) => p.draw(ctx!));
-      data.bullets.forEach((b) => b.draw(ctx!));
-      data.ship.draw(ctx!);
+      data.particles.forEach((p) => p.draw(ctx!, pal));
+      data.asteroids.forEach((a) => a.draw(ctx!, pal));
+      data.powerUps.forEach((p) => p.draw(ctx!, pal));
+      data.bullets.forEach((b) => b.draw(ctx!, pal));
+      data.ship.draw(ctx!, pal);
     }
 
     function reportChanges() {

@@ -7,7 +7,11 @@ import {
   useImperativeHandle,
   useRef,
 } from "react";
-import type { GameComponentHandle, GameComponentProps } from "./registry";
+import type {
+  GameComponentHandle,
+  GameComponentProps,
+  SkinId,
+} from "./registry";
 
 const W = 800;
 const H = 600;
@@ -31,80 +35,81 @@ const BASE_BALL_VY = -300;
 
 const CONTROL_CODES = new Set(["ArrowLeft", "ArrowRight"]);
 
+// Colores lógicos de los bloques (heredados del spritesheet original). Ya no
+// son sprites: cada skin los mapea a su propia paleta en SKIN_PALETTES.
 type BlockColor =
   "red" | "yellow" | "cyan" | "magenta" | "hotpink" | "green" | "gray";
 
-interface SpriteRect {
-  sx: number;
-  sy: number;
-  sw: number;
-  sh: number;
+// ── Skins ───────────────────────────────────────────────────────────────────
+// Cada paleta se diseña contra el fondo oscuro (--bg #0a0a0f). Ningún color
+// clave puede fundirse con el fondo: todos tienen luminancia real sobre negro.
+interface Palette {
+  bg: string; // fondo del canvas del juego
+  paddle: string; // relleno de la paleta (nave)
+  ball: string; // relleno de la bola
+  blocks: Record<BlockColor, string>; // color por tipo de bloque
+  glow: number; // shadowBlur; 0 = sin glow (clásico), >0 = fósforo/neón
 }
 
-// Coordenadas del spritesheet, portadas tal cual desde
-// references/started-games/04-arkanoid/assets/spritesheet.js
-const SPRITES: {
-  paddle: SpriteRect;
-  ball: SpriteRect;
-  blocks: Record<BlockColor, SpriteRect>;
-} = {
-  paddle: { sx: 32, sy: 112, sw: 162, sh: 14 },
-  ball: { sx: 32, sy: 32, sw: 16, sh: 16 },
-  blocks: {
-    gray: { sx: 32, sy: 288, sw: 32, sh: 16 },
-    red: { sx: 32, sy: 176, sw: 32, sh: 16 },
-    yellow: { sx: 32, sy: 240, sw: 32, sh: 16 },
-    cyan: { sx: 32, sy: 192, sw: 32, sh: 16 },
-    magenta: { sx: 32, sy: 224, sw: 32, sh: 16 },
-    hotpink: { sx: 32, sy: 256, sw: 32, sh: 16 },
-    green: { sx: 32, sy: 208, sw: 32, sh: 16 },
+const SKIN_PALETTES: Record<SkinId, Palette> = {
+  // Bloques sólidos y saturados sobre negro, como el arcade original.
+  clasico: {
+    bg: "#000000",
+    paddle: "#d6d6d6",
+    ball: "#ffffff",
+    blocks: {
+      red: "#ff5555",
+      yellow: "#ffd93b",
+      cyan: "#3bd6ff",
+      magenta: "#c24bff",
+      hotpink: "#ff5bb0",
+      green: "#5bd94b",
+      gray: "#b8b8b8",
+    },
+    glow: 0,
+  },
+  // Neón saturado con glow, apoyado en la paleta de la app (cyan/magenta/
+  // amarillo/verde). Cada tipo de bloque tiene un tono brillante distinto.
+  neon: {
+    bg: "#05060a",
+    paddle: "#00f5ff", // cyan
+    ball: "#f5ff00", // amarillo, máximo contraste contra los bloques
+    blocks: {
+      red: "#ff2d55",
+      yellow: "#f5ff00",
+      cyan: "#00f5ff",
+      magenta: "#ff3d9a", // subido en luminancia vs --magenta para no lavarse
+      hotpink: "#ff7bd0",
+      green: "#00ff88",
+      gray: "#8be3ff",
+    },
+    glow: 12,
+  },
+  // CRT vintage: monitor de fósforo ámbar con acento verde y bloom suave.
+  // Tonos cálidos y algo apagados, pero con luminancia real para distinguir filas.
+  retro: {
+    bg: "#080600",
+    paddle: "#ffc04a", // ámbar brillante
+    ball: "#ffe8a0", // ámbar pálido
+    blocks: {
+      red: "#ff7a2c", // naranja cálido
+      yellow: "#ffcf5a", // ámbar
+      cyan: "#a8c94a", // amarillo-verde
+      magenta: "#d98f3a", // bronce
+      hotpink: "#e8a94a", // ámbar claro
+      green: "#7fbf3a", // fósforo verde
+      gray: "#c0902e", // bronce oscuro
+    },
+    glow: 5,
   },
 };
 
-const EXPLOSION_FRAMES: Record<BlockColor, SpriteRect[]> = {
-  red: [
-    { sx: 256, sy: 176, sw: 32, sh: 16 },
-    { sx: 288, sy: 176, sw: 32, sh: 16 },
-    { sx: 320, sy: 176, sw: 32, sh: 16 },
-    { sx: 352, sy: 176, sw: 32, sh: 16 },
-  ],
-  cyan: [
-    { sx: 256, sy: 192, sw: 32, sh: 16 },
-    { sx: 288, sy: 192, sw: 32, sh: 16 },
-    { sx: 320, sy: 192, sw: 32, sh: 16 },
-    { sx: 352, sy: 192, sw: 32, sh: 16 },
-  ],
-  green: [
-    { sx: 256, sy: 208, sw: 32, sh: 16 },
-    { sx: 288, sy: 208, sw: 32, sh: 16 },
-    { sx: 320, sy: 208, sw: 32, sh: 16 },
-    { sx: 352, sy: 208, sw: 32, sh: 16 },
-  ],
-  magenta: [
-    { sx: 256, sy: 224, sw: 32, sh: 16 },
-    { sx: 288, sy: 224, sw: 32, sh: 16 },
-    { sx: 320, sy: 224, sw: 32, sh: 16 },
-    { sx: 352, sy: 224, sw: 32, sh: 16 },
-  ],
-  yellow: [
-    { sx: 256, sy: 240, sw: 32, sh: 16 },
-    { sx: 288, sy: 240, sw: 32, sh: 16 },
-    { sx: 320, sy: 240, sw: 32, sh: 16 },
-    { sx: 352, sy: 240, sw: 32, sh: 16 },
-  ],
-  hotpink: [
-    { sx: 256, sy: 256, sw: 32, sh: 16 },
-    { sx: 288, sy: 256, sw: 32, sh: 16 },
-    { sx: 320, sy: 256, sw: 32, sh: 16 },
-    { sx: 352, sy: 256, sw: 32, sh: 16 },
-  ],
-  gray: [
-    { sx: 256, sy: 176, sw: 32, sh: 16 },
-    { sx: 288, sy: 176, sw: 32, sh: 16 },
-    { sx: 320, sy: 176, sw: 32, sh: 16 },
-    { sx: 352, sy: 176, sw: 32, sh: 16 },
-  ],
-};
+function hexToRgba(hex: string, alpha: number) {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
 
 const EXPLOSION_DURATION = 150; // ms
 
@@ -351,73 +356,125 @@ function update(data: GameData, dt: number, keys: Record<string, boolean>) {
   }
 }
 
-function drawSprite(
+function drawBlockRect(
   ctx: CanvasRenderingContext2D,
-  img: HTMLImageElement,
-  sprite: SpriteRect,
   x: number,
   y: number,
   w: number,
   h: number,
+  color: string,
+  glow: number,
 ) {
-  ctx.drawImage(img, sprite.sx, sprite.sy, sprite.sw, sprite.sh, x, y, w, h);
+  ctx.save();
+  if (glow) {
+    ctx.shadowColor = color;
+    ctx.shadowBlur = glow;
+  }
+  ctx.fillStyle = color;
+  ctx.fillRect(x + 1, y + 1, w - 2, h - 2);
+  ctx.restore();
+  // Realce superior y sombra inferior para dar volumen (sin glow, para no
+  // difuminar los bordes del bloque).
+  ctx.fillStyle = "rgba(255,255,255,0.20)";
+  ctx.fillRect(x + 1, y + 1, w - 2, 4);
+  ctx.fillStyle = "rgba(0,0,0,0.24)";
+  ctx.fillRect(x + 1, y + h - 4, w - 2, 3);
 }
 
-function draw(
+function drawExplosion(
   ctx: CanvasRenderingContext2D,
-  data: GameData,
-  img: HTMLImageElement,
+  exp: Explosion,
+  color: string,
+  glow: number,
 ) {
-  ctx.fillStyle = "#000";
+  const p = exp.elapsed / EXPLOSION_DURATION; // 0..1
+  const alpha = 1 - p;
+  const grow = p * 10;
+  ctx.save();
+  if (glow) {
+    ctx.shadowColor = color;
+    ctx.shadowBlur = glow;
+  }
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = hexToRgba(color, 0.35);
+  ctx.fillRect(exp.x - grow, exp.y - grow, exp.w + grow * 2, exp.h + grow * 2);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+  ctx.strokeRect(
+    exp.x - grow,
+    exp.y - grow,
+    exp.w + grow * 2,
+    exp.h + grow * 2,
+  );
+  ctx.restore();
+}
+
+function drawPaddle(
+  ctx: CanvasRenderingContext2D,
+  paddle: GameData["paddle"],
+  color: string,
+  glow: number,
+) {
+  ctx.save();
+  if (glow) {
+    ctx.shadowColor = color;
+    ctx.shadowBlur = glow;
+  }
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.roundRect(paddle.x, paddle.y, paddle.w, paddle.h, 6);
+  ctx.fill();
+  ctx.restore();
+  // Brillo superior
+  ctx.fillStyle = "rgba(255,255,255,0.28)";
+  ctx.beginPath();
+  ctx.roundRect(paddle.x + 4, paddle.y + 2, paddle.w - 8, 4, 3);
+  ctx.fill();
+}
+
+function drawBall(
+  ctx: CanvasRenderingContext2D,
+  ball: GameData["ball"],
+  color: string,
+  glow: number,
+) {
+  const cx = ball.x + ball.w / 2;
+  const cy = ball.y + ball.h / 2;
+  const r = ball.w / 2;
+  ctx.save();
+  if (glow) {
+    ctx.shadowColor = color;
+    ctx.shadowBlur = glow;
+  }
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function draw(ctx: CanvasRenderingContext2D, data: GameData, pal: Palette) {
+  ctx.fillStyle = pal.bg;
   ctx.fillRect(0, 0, W, H);
 
   for (const block of data.blocks) {
     if (block.alive)
-      drawSprite(
+      drawBlockRect(
         ctx,
-        img,
-        SPRITES.blocks[block.color],
         block.x,
         block.y,
         block.w,
         block.h,
+        pal.blocks[block.color],
+        pal.glow,
       );
   }
 
-  for (const exp of data.explosions) {
-    const frameIndex = Math.min(
-      Math.floor((exp.elapsed / EXPLOSION_DURATION) * 4),
-      3,
-    );
-    drawSprite(
-      ctx,
-      img,
-      EXPLOSION_FRAMES[exp.color][frameIndex],
-      exp.x,
-      exp.y,
-      exp.w,
-      exp.h,
-    );
-  }
+  for (const exp of data.explosions)
+    drawExplosion(ctx, exp, pal.blocks[exp.color], pal.glow);
 
-  drawSprite(
-    ctx,
-    img,
-    SPRITES.paddle,
-    data.paddle.x,
-    data.paddle.y,
-    data.paddle.w,
-    data.paddle.h,
-  );
-  drawSprite(
-    ctx,
-    img,
-    SPRITES.ball,
-    data.ball.x,
-    data.ball.y,
-    data.ball.w,
-    data.ball.h,
-  );
+  drawPaddle(ctx, data.paddle, pal.paddle, pal.glow);
+  drawBall(ctx, data.ball, pal.ball, pal.glow);
 }
 
 export type BloqueBusterGameProps = GameComponentProps;
@@ -433,12 +490,15 @@ export const BloqueBusterGame = forwardRef<
   BloqueBusterGameHandle,
   BloqueBusterGameProps
 >(function BloqueBusterGame(
-  { paused, onScoreChange, onLivesChange, onLevelChange, onGameOver },
+  { paused, skin, onScoreChange, onLivesChange, onLevelChange, onGameOver },
   ref,
 ) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const dataRef = useRef<GameData>(createInitialGameData());
   const pausedRef = useRef(paused);
+  // skinRef: el loop de canvas lee el skin activo sin re-suscribir el efecto.
+  const skinRef = useRef<SkinId>(skin);
+  skinRef.current = skin;
   const callbacksRef = useRef({
     onScoreChange,
     onLivesChange,
@@ -482,7 +542,6 @@ export const BloqueBusterGame = forwardRef<
 
     canvas.focus();
 
-    let cancelled = false;
     let rafId = 0;
     const keys: Record<string, boolean> = {};
 
@@ -532,13 +591,13 @@ export const BloqueBusterGame = forwardRef<
     let lastTime: number | null = null;
     let wasOver = false;
 
-    function loop(ts: number, img: HTMLImageElement) {
+    function loop(ts: number) {
       const dt = lastTime === null ? 0 : Math.min((ts - lastTime) / 1000, 0.05);
       lastTime = ts;
 
       const data = dataRef.current;
       if (!pausedRef.current) update(data, dt, keys);
-      draw(ctx!, data, img);
+      draw(ctx!, data, SKIN_PALETTES[skinRef.current]);
       reportChanges();
 
       if (data.state === "gameover" || data.state === "win") {
@@ -550,21 +609,12 @@ export const BloqueBusterGame = forwardRef<
         wasOver = false;
       }
 
-      rafId = requestAnimationFrame((t) => loop(t, img));
+      rafId = requestAnimationFrame(loop);
     }
 
-    const img = new Image();
-    img.onload = () => {
-      if (cancelled) return;
-      rafId = requestAnimationFrame((t) => loop(t, img));
-    };
-    img.onerror = () => {
-      console.error("No se pudo cargar el spritesheet de Bloque Buster");
-    };
-    img.src = "/spritesheet-breakout.png";
+    rafId = requestAnimationFrame(loop);
 
     return () => {
-      cancelled = true;
       cancelAnimationFrame(rafId);
       canvas.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("keydown", handleKeyDown);

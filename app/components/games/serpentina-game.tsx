@@ -7,13 +7,56 @@ import {
   useImperativeHandle,
   useRef,
 } from "react";
-import type { GameComponentHandle, GameComponentProps } from "./registry";
+import type {
+  GameComponentHandle,
+  GameComponentProps,
+  SkinId,
+} from "./registry";
 import {
   FRUIT_KINDS,
   FRUIT_SPRITE_SOURCE,
   FRUIT_SPRITES,
   type FruitKind,
 } from "./serpentina-sprites";
+
+// ── Skins ───────────────────────────────────────────────────────────────────
+// Cada paleta se diseña contra el fondo oscuro (--bg #0a0a0f). Ningún color
+// clave puede fundirse con el fondo: cabeza, cuerpo y rejilla mantienen
+// luminancia real sobre negro. Las frutas son sprites fotográficos y no cambian.
+interface Palette {
+  bg: string; // fondo del canvas del juego
+  head: string; // cabeza de la serpiente
+  body: string; // cuerpo de la serpiente
+  grid: string; // líneas de la rejilla (rgba, ya con alpha)
+  glow: number; // shadowBlur de la cabeza; el cuerpo usa la mitad; 0 = sin glow
+}
+
+const SKIN_PALETTES: Record<SkinId, Palette> = {
+  // Serpiente verde clásica sobre negro, como el arcade original.
+  clasico: {
+    bg: "#000000",
+    head: "#39ff14",
+    body: "#00b140",
+    grid: "rgba(255,255,255,0.05)",
+    glow: 4,
+  },
+  // Neón saturado con glow fuerte y una paleta distinta (amarillo/cyan de la app).
+  neon: {
+    bg: "#05060a",
+    head: "#f5ff00", // amarillo
+    body: "#00f5ff", // cyan
+    grid: "rgba(0,245,255,0.09)",
+    glow: 14,
+  },
+  // CRT vintage: fósforo ámbar cálido con bloom suave.
+  retro: {
+    bg: "#080600",
+    head: "#ffc04a", // ámbar brillante
+    body: "#c9922b", // ámbar/bronce más apagado pero claramente visible
+    grid: "rgba(255,176,0,0.06)",
+    glow: 6,
+  },
+};
 
 const COLS = 40;
 const ROWS = 30;
@@ -166,8 +209,8 @@ function stepGrid(data: GameData) {
   }
 }
 
-function drawGrid(ctx: CanvasRenderingContext2D) {
-  ctx.strokeStyle = "rgba(255,255,255,0.05)";
+function drawGrid(ctx: CanvasRenderingContext2D, pal: Palette) {
+  ctx.strokeStyle = pal.grid;
   ctx.lineWidth = 0.5;
   for (let c = 1; c < COLS; c++) {
     ctx.beginPath();
@@ -183,15 +226,15 @@ function drawGrid(ctx: CanvasRenderingContext2D) {
   }
 }
 
-function drawSnake(ctx: CanvasRenderingContext2D, snake: Cell[]) {
+function drawSnake(ctx: CanvasRenderingContext2D, snake: Cell[], pal: Palette) {
   snake.forEach((segment, i) => {
     const isHead = i === 0;
-    const color = isHead ? "#39ff14" : "#00b140";
+    const color = isHead ? pal.head : pal.body;
     const x = segment.col * CELL;
     const y = segment.row * CELL;
     ctx.save();
     ctx.shadowColor = color;
-    ctx.shadowBlur = isHead ? 10 : 6;
+    ctx.shadowBlur = isHead ? pal.glow : pal.glow * 0.6;
     ctx.fillStyle = color;
     ctx.fillRect(x + 1, y + 1, CELL - 2, CELL - 2);
     ctx.restore();
@@ -219,12 +262,13 @@ function draw(
   ctx: CanvasRenderingContext2D,
   data: GameData,
   fruitImg: HTMLImageElement,
+  pal: Palette,
 ) {
-  ctx.fillStyle = "#000";
+  ctx.fillStyle = pal.bg;
   ctx.fillRect(0, 0, W, H);
-  drawGrid(ctx);
+  drawGrid(ctx, pal);
   drawFruit(ctx, fruitImg, data.fruit);
-  drawSnake(ctx, data.snake);
+  drawSnake(ctx, data.snake, pal);
 }
 
 export type SerpentinaGameProps = GameComponentProps;
@@ -239,12 +283,15 @@ export const SerpentinaGame = forwardRef<
   SerpentinaGameHandle,
   SerpentinaGameProps
 >(function SerpentinaGame(
-  { paused, onScoreChange, onLivesChange, onLevelChange, onGameOver },
+  { paused, skin, onScoreChange, onLivesChange, onLevelChange, onGameOver },
   ref,
 ) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const dataRef = useRef<GameData>(createInitialGameData());
   const pausedRef = useRef(paused);
+  // skinRef: el loop de canvas lee el skin activo sin re-suscribir el efecto.
+  const skinRef = useRef<SkinId>(skin);
+  skinRef.current = skin;
   const callbacksRef = useRef({
     onScoreChange,
     onLivesChange,
@@ -356,7 +403,7 @@ export const SerpentinaGame = forwardRef<
         }
       }
 
-      draw(ctx!, data, fruitImg);
+      draw(ctx!, data, fruitImg, SKIN_PALETTES[skinRef.current]);
       reportChanges();
 
       if (data.state === "gameover") {

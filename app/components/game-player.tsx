@@ -4,12 +4,16 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import type { Game } from "@/lib/supabase/games";
 import { createClient } from "@/lib/supabase/client";
-import { GAME_REGISTRY, type GameComponentHandle } from "./games/registry";
+import {
+  GAME_REGISTRY,
+  SKINS,
+  type GameComponentHandle,
+} from "./games/registry";
 import { useUser } from "./user-context";
 
 export function GamePlayer({ game }: { game: Game }) {
   const router = useRouter();
-  const { user } = useUser();
+  const { user, skin, setSkin } = useUser();
   const gameEntry = GAME_REGISTRY[game.id];
   const GameComponent = gameEntry?.Component;
   const gameRef = useRef<GameComponentHandle>(null);
@@ -117,6 +121,27 @@ export function GamePlayer({ game }: { game: Game }) {
           )}
         </div>
         <div className="hud-actions">
+          {GameComponent && gameEntry?.supportsSkins && (
+            <div className="hud-skin">
+              <span className="hud-skin-label">Skin</span>
+              <div className="tetris-select-wrap">
+                <select
+                  className="tetris-select"
+                  value={skin}
+                  onChange={(e) =>
+                    setSkin(e.target.value as (typeof SKINS)[number]["value"])
+                  }
+                  aria-label="Seleccionar skin"
+                >
+                  {SKINS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
           <button className="btn yellow" onClick={() => setPaused((p) => !p)}>
             {paused ? "REANUDAR" : "PAUSA"}
           </button>
@@ -138,6 +163,7 @@ export function GamePlayer({ game }: { game: Game }) {
             <GameComponent
               ref={gameRef}
               paused={paused}
+              skin={skin}
               onScoreChange={setScore}
               onLivesChange={setLives}
               onLevelChange={setLevel}
