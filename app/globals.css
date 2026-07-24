@@ -1216,6 +1216,21 @@ a {
     min-height: 150px;
     max-width: 100%;
   }
+  /* Tetris (caída) es portrait (tablero 1:2): la pantalla 4:3 lo aplastaba y se
+     salía. Aquí la pantalla se hace más alta y se dimensiona por su ALTURA. El
+     tope por ancho —(100dvw - 180px) * 2— reserva sitio para el panel lateral
+     (Next + Skin) para que tablero + panel no desborden a lo ancho. Los controles
+     de teclado del panel se ocultan porque abajo están los botones táctiles.
+     :has() sube la especificidad, así que gana sobre la regla 4:3 de arriba. */
+  .crt--fit .crt-screen:has(.tetris-layout) {
+    height: min(calc(100vh - 300px), calc((100vw - 180px) * 2));
+    height: min(calc(100dvh - 300px), calc((100dvw - 180px) * 2));
+    min-height: 240px;
+    max-width: 100%;
+  }
+  .tetris-side-block--controls {
+    display: none;
+  }
 
   /* ── cara de la consola ── */
   .game-console {
@@ -2022,17 +2037,27 @@ a {
   .hud-skin .tetris-select-wrap {
     width: 96px;
   }
+  /* Tetris es 1:2 (vertical): en pantallas chicas se dimensiona por ALTURA para
+     que el tablero quepa completo, con el panel compacto al lado (no debajo, que
+     robaría alto). El ancho del tablero se deriva del aspect-ratio 1/2 base. */
   .tetris-layout {
-    flex-direction: column;
+    flex-direction: row;
     align-items: center;
+    justify-content: center;
+    gap: 14px;
+    padding: 12px;
+    overflow: hidden;
   }
   .tetris-board {
-    height: auto;
-    width: min(100%, 260px);
+    height: 100%;
+    width: auto;
+    max-width: 60%;
   }
   .tetris-side {
-    width: 100%;
-    max-width: 320px;
+    width: auto;
+    flex: 0 1 auto;
+    min-width: 96px;
+    max-width: 40%;
   }
 }
 

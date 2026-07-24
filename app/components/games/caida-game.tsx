@@ -565,7 +565,7 @@ export const CaidaGame = forwardRef<CaidaGameHandle, CaidaGameProps>(
           className="tetris-board"
         />
         <div className="tetris-side">
-          <div className="tetris-side-block">
+          <div className="tetris-side-block tetris-side-block--next">
             <div className="tetris-label">Next</div>
             <div className="tetris-next">
               <canvas
@@ -576,7 +576,7 @@ export const CaidaGame = forwardRef<CaidaGameHandle, CaidaGameProps>(
             </div>
           </div>
 
-          <div className="tetris-side-block">
+          <div className="tetris-side-block tetris-side-block--skin">
             <div className="tetris-label">Skin</div>
             <div className="tetris-select-wrap">
               <select
@@ -593,7 +593,7 @@ export const CaidaGame = forwardRef<CaidaGameHandle, CaidaGameProps>(
             </div>
           </div>
 
-          <div className="tetris-side-block">
+          <div className="tetris-side-block tetris-side-block--controls">
             <div className="tetris-label">Controls</div>
             <div className="tetris-controls">
               <div className="tetris-control-row">
