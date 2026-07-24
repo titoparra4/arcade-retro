@@ -32,12 +32,31 @@ export interface GameComponentHandle {
   forceGameOver: () => void; // usado por el botón FIN ("abandonar partida")
 }
 
+// Controles táctiles: cada botón on-screen se traduce a KeyboardEvent sintéticos
+// sobre `window`. Los 4 juegos ya escuchan window keydown/keyup con e.code, así
+// que reciben el input sin cambio alguno. El `mode` define la traducción:
+// - "hold":   keydown al tocar, keyup al soltar. Para juegos que sondean
+//             keys[code] cada frame (rocas: giro/empuje; bloque-buster: pala).
+// - "tap":    keydown + keyup inmediato, una acción por toque. Para juegos que
+//             actúan en el evento keydown (serpentina: dirección; caida: rotar/soltar).
+// - "repeat": como "tap" pero mientras el dedo siga presionado re-emite keydown
+//             a intervalo fijo (auto-repetición). Para caida: mover izq/der y bajar.
+export type TouchButtonMode = "hold" | "tap" | "repeat";
+
+export interface TouchButton {
+  code: string; // e.code sintetizado, p. ej. "ArrowLeft", "Space"
+  label: string; // ícono/etiqueta corta mostrada en el botón, p. ej. "◄", "▲", "FUEGO"
+  mode: TouchButtonMode;
+  group: "pad" | "action"; // "pad" = esquina inf. izq (mover); "action" = esquina inf. der
+}
+
 export interface GameRegistryEntry {
   Component: ForwardRefExoticComponent<
     GameComponentProps & RefAttributes<GameComponentHandle>
   >;
   extraStatLabel?: string; // etiqueta del stat extra en el HUD, solo si el juego lo usa
   supportsSkins?: boolean; // true si el juego consume la prop `skin` del sistema compartido → el player muestra el selector
+  touchControls?: TouchButton[]; // si está definido, el player monta <TouchControls>
 }
 
 export const GAME_REGISTRY: Partial<Record<string, GameRegistryEntry>> = {
@@ -45,8 +64,39 @@ export const GAME_REGISTRY: Partial<Record<string, GameRegistryEntry>> = {
     Component: AsteroidsGame,
     extraStatLabel: "Triple disparo",
     supportsSkins: true,
+    touchControls: [
+      { code: "ArrowLeft", label: "◄", mode: "hold", group: "pad" },
+      { code: "ArrowRight", label: "►", mode: "hold", group: "pad" },
+      { code: "ArrowUp", label: "▲ EMPUJE", mode: "hold", group: "action" },
+      { code: "Space", label: "● FUEGO", mode: "tap", group: "action" },
+    ],
   },
-  caida: { Component: CaidaGame },
-  "bloque-buster": { Component: BloqueBusterGame, supportsSkins: true },
-  serpentina: { Component: SerpentinaGame, supportsSkins: true },
+  caida: {
+    Component: CaidaGame,
+    touchControls: [
+      { code: "ArrowLeft", label: "◄", mode: "repeat", group: "pad" },
+      { code: "ArrowRight", label: "►", mode: "repeat", group: "pad" },
+      { code: "ArrowDown", label: "▼", mode: "repeat", group: "pad" },
+      { code: "ArrowUp", label: "↻ ROTAR", mode: "tap", group: "action" },
+      { code: "Space", label: "⤓ SOLTAR", mode: "tap", group: "action" },
+    ],
+  },
+  "bloque-buster": {
+    Component: BloqueBusterGame,
+    supportsSkins: true,
+    touchControls: [
+      { code: "ArrowLeft", label: "◄", mode: "hold", group: "pad" },
+      { code: "ArrowRight", label: "►", mode: "hold", group: "pad" },
+    ],
+  },
+  serpentina: {
+    Component: SerpentinaGame,
+    supportsSkins: true,
+    touchControls: [
+      { code: "ArrowUp", label: "▲", mode: "tap", group: "pad" },
+      { code: "ArrowDown", label: "▼", mode: "tap", group: "pad" },
+      { code: "ArrowLeft", label: "◄", mode: "tap", group: "pad" },
+      { code: "ArrowRight", label: "►", mode: "tap", group: "pad" },
+    ],
+  },
 };

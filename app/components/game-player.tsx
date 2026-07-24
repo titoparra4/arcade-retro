@@ -9,6 +9,7 @@ import {
   SKINS,
   type GameComponentHandle,
 } from "./games/registry";
+import { TouchControls } from "./games/touch-controls";
 import { useUser } from "./user-context";
 
 export function GamePlayer({ game }: { game: Game }) {
@@ -142,7 +143,10 @@ export function GamePlayer({ game }: { game: Game }) {
               </div>
             </div>
           )}
-          <button className="btn yellow" onClick={() => setPaused((p) => !p)}>
+          <button
+            className="btn yellow hud-pause"
+            onClick={() => setPaused((p) => !p)}
+          >
             {paused ? "REANUDAR" : "PAUSA"}
           </button>
           <button className="btn magenta" onClick={endGame}>
@@ -209,6 +213,38 @@ export function GamePlayer({ game }: { game: Game }) {
           <span>CARGA · 1MB</span>
         </div>
       </div>
+
+      {GameComponent && gameEntry?.touchControls && (
+        <div className="game-console">
+          <TouchControls buttons={gameEntry.touchControls} paused={paused} />
+          <div className="game-console-bar">
+            <button
+              className="btn yellow console-pause"
+              onClick={() => setPaused((p) => !p)}
+            >
+              {paused ? "REANUDAR" : "PAUSA"}
+            </button>
+            {gameEntry?.supportsSkins && (
+              <div className="tetris-select-wrap console-skin">
+                <select
+                  className="tetris-select"
+                  value={skin}
+                  onChange={(e) =>
+                    setSkin(e.target.value as (typeof SKINS)[number]["value"])
+                  }
+                  aria-label="Seleccionar skin"
+                >
+                  {SKINS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {over && (
         <div className="modal-bd">
