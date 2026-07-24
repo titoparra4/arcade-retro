@@ -1023,6 +1023,26 @@ a {
 .hud-actions {
   display: flex;
   gap: 10px;
+  align-items: center;
+}
+.hud-skin {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.hud-skin-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--ink-faint);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.hud-skin .tetris-select-wrap {
+  width: 120px;
+}
+.hud-skin .tetris-select {
+  padding: 8px 28px 8px 10px;
+  font-size: 12px;
 }
 
 .crt {
