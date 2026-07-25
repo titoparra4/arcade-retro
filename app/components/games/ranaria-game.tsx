@@ -745,11 +745,19 @@ interface ReportedState {
   score: number;
   lives: number;
   level: number;
+  time: number; // temporizador de ronda, con 1 decimal (stat extra del HUD)
 }
 
 export const RanariaGame = forwardRef<RanariaGameHandle, RanariaGameProps>(
   function RanariaGame(
-    { paused, onScoreChange, onLivesChange, onLevelChange, onGameOver },
+    {
+      paused,
+      onScoreChange,
+      onLivesChange,
+      onLevelChange,
+      onGameOver,
+      onExtraStatChange,
+    },
     ref,
   ) {
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -760,11 +768,13 @@ export const RanariaGame = forwardRef<RanariaGameHandle, RanariaGameProps>(
       onLivesChange,
       onLevelChange,
       onGameOver,
+      onExtraStatChange,
     });
     const reportedRef = useRef<ReportedState>({
       score: 0,
       lives: START_LIVES,
       level: 1,
+      time: roundTimeFor(1),
     });
 
     pausedRef.current = paused;
@@ -773,18 +783,24 @@ export const RanariaGame = forwardRef<RanariaGameHandle, RanariaGameProps>(
       onLivesChange,
       onLevelChange,
       onGameOver,
+      onExtraStatChange,
     };
 
     const reset = useCallback(() => {
       dataRef.current = createInitialGameData();
-      reportedRef.current = { score: 0, lives: START_LIVES, level: 1 };
+      reportedRef.current = {
+        score: 0,
+        lives: START_LIVES,
+        level: 1,
+        time: roundTimeFor(1),
+      };
       callbacksRef.current.onScoreChange(0);
       callbacksRef.current.onLivesChange(START_LIVES);
       callbacksRef.current.onLevelChange(1);
+      callbacksRef.current.onExtraStatChange(roundTimeFor(1));
     }, []);
 
     const forceGameOver = useCallback(() => {
-      // Completado en el paso 7.
       const data = dataRef.current;
       if (data.state !== "playing") return;
       data.state = "gameover";
@@ -803,6 +819,7 @@ export const RanariaGame = forwardRef<RanariaGameHandle, RanariaGameProps>(
 
       canvas.focus();
       callbacksRef.current.onLivesChange(START_LIVES);
+      callbacksRef.current.onExtraStatChange(dataRef.current.timeLeft);
 
       let rafId = 0;
       let lastTime: number | null = null;
@@ -852,6 +869,14 @@ export const RanariaGame = forwardRef<RanariaGameHandle, RanariaGameProps>(
         if (data.level !== reported.level) {
           reported.level = data.level;
           cb.onLevelChange(data.level);
+        }
+        // Stat extra del HUD de la plataforma: el reloj de la ronda. Se emite
+        // con 1 decimal (la resolución que muestra el player) para no disparar
+        // un setState por frame.
+        const time = Math.round(data.timeLeft * 10) / 10;
+        if (time !== reported.time) {
+          reported.time = time;
+          cb.onExtraStatChange(time);
         }
       }
 

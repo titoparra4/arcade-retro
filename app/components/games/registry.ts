@@ -2,6 +2,7 @@ import type { ForwardRefExoticComponent, RefAttributes } from "react";
 import { AsteroidsGame } from "./asteroids-game";
 import { BloqueBusterGame } from "./bloque-buster-game";
 import { CaidaGame } from "./caida-game";
+import { RanariaGame } from "./ranaria-game";
 import { SerpentinaGame } from "./serpentina-game";
 
 // Sistema de skins compartido: fuente de verdad del tipo y de las opciones del
@@ -88,6 +89,10 @@ export const GAME_REGISTRY: Partial<Record<string, GameRegistryEntry>> = {
       { code: "ArrowLeft", label: "◄", mode: "hold", group: "pad" },
       { code: "ArrowRight", label: "►", mode: "hold", group: "pad" },
     ],
+  },
+  ranaria: {
+    Component: RanariaGame,
+    extraStatLabel: "Tiempo",
   },
   serpentina: {
     Component: SerpentinaGame,
