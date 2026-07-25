@@ -14,11 +14,12 @@ There is no test setup yet.
 
 ## Skills & workflow
 
-All three custom skills live in `.agents/skills/` (installed originally from `Klerith/fernando-skills` via `npx skills@latest add`; see `skills-lock.json`):
+All four custom skills live in `.agents/skills/` (`spec` and `spec-impl` were installed from `Klerith/fernando-skills` via `npx skills@latest add`, see `skills-lock.json`; `add-game` and `spec-impl-game` are local):
 
 - **`/spec`** (`.agents/skills/spec/`) — create or refine a spec section by section; saves to `specs/NN-slug.md` as `Borrador` (never auto-approves). Uses `template.md`.
 - **`/spec-impl`** (`.agents/skills/spec-impl/`) — implement an already-**Aprobado** spec on its own git branch (`spec-NN-slug`), pausing after each step for review.
 - **`/add-game`** (`.agents/skills/add-game/`) — specialized `/spec-impl` for "add a new playable game" specs. Can also **create** the spec first (following `/spec`) if it doesn't exist. Implements via a fixed recipe: game metadata → canvas component → `GAME_REGISTRY` entry → Supabase `games` insert → build + playtest → close. Read `.agents/skills/add-game/SKILL.md` and its `template.md` before adding a game.
+- **`/spec-impl-game`** (`.agents/skills/spec-impl-game/`) — `/spec-impl` plus the post-implementation. It doesn't duplicate the procedure: it **reads** `.agents/skills/spec-impl/SKILL.md` and runs its Phases 1–4 verbatim (only deviation: it also searches `specs/game-jam/**`), then adds a Phase 5 that chains **`skin-designer` first and `mobile-porter` second** — sequentially, never in parallel, asking before each so Tito can review and commit in between. Use it for specs that end in a playable game needing skins and touch controls; plain `/spec-impl` otherwise.
 
 Subagents live in `.claude/agents/`:
 
