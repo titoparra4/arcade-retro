@@ -93,6 +93,18 @@ export const GAME_REGISTRY: Partial<Record<string, GameRegistryEntry>> = {
   ranaria: {
     Component: RanariaGame,
     extraStatLabel: "Tiempo",
+    supportsSkins: true,
+    // Frogger salta una celda por pulsación: handleKeyDown guarda la dirección en
+    // `pendingDir` y el loop la consume en el frame siguiente. No sondea teclas por
+    // frame → "tap". No se usa "repeat" a propósito: la animación de salto dura
+    // 120 ms, justo el intervalo de auto-repetición, así que mantener el dedo
+    // encadenaría saltos y cruzaría la carretera sin poder frenar en los huecos.
+    touchControls: [
+      { code: "ArrowUp", label: "▲", mode: "tap", group: "pad" },
+      { code: "ArrowDown", label: "▼", mode: "tap", group: "pad" },
+      { code: "ArrowLeft", label: "◄", mode: "tap", group: "pad" },
+      { code: "ArrowRight", label: "►", mode: "tap", group: "pad" },
+    ],
   },
   serpentina: {
     Component: SerpentinaGame,

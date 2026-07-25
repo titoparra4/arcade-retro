@@ -7,7 +7,11 @@ import {
   useImperativeHandle,
   useRef,
 } from "react";
-import type { GameComponentHandle, GameComponentProps } from "./registry";
+import type {
+  GameComponentHandle,
+  GameComponentProps,
+  SkinId,
+} from "./registry";
 
 // ── Cuadrícula ──────────────────────────────────────────────────────────────
 // El mapa es vertical: la rana arranca abajo y avanza hacia arriba. 16 columnas
@@ -422,60 +426,217 @@ function update(data: GameData, dt: number) {
 }
 
 // ── Dibujo ──────────────────────────────────────────────────────────────────
-const COLORS = {
-  road: "#0d0d12",
-  roadLine: "rgba(255,255,255,0.16)",
-  river: "#0a2a4a",
-  riverWave: "rgba(120,200,255,0.08)",
-  safe: "#123d1a",
-  goalRow: "#0e2f16",
-  goalMouth: "#1f6b2e",
-  goalBorder: "#ffcc33",
-  log: "#6b4423",
-  logLine: "#4a2f18",
-  turtle: "#3ddc6b",
-  turtleShell: "#2a9e4d",
-  truckBody: "#9aa3ad",
-  truckCab: "#5b6570",
-  frog: "#5cff5c",
-  frogDark: "#2fbf2f",
-  hud: "#ffffff",
+// ── Skins ───────────────────────────────────────────────────────────────────
+// Cada paleta se diseña contra el fondo oscuro (--bg #0a0a0f). Dos contrastes
+// son información de juego, no decoración, y se respetan en los tres skins:
+//   1. tronco/tortuga (apoyo) frente al agua → el apoyo siempre es mucho más
+//      luminoso y de tono opuesto al del río.
+//   2. tortuga visible frente a sumergida → la visible es un disco relleno; la
+//      sumergida, solo un aro translúcido del mismo tono.
+interface Palette {
+  // Zonas
+  goalRow: string; // franja de las bocas destino
+  goalMouth: string; // interior de cada boca
+  goalBorder: string; // borde de cada boca
+  goalFilled: string; // silueta de rana en la boca ya ocupada
+  river: string;
+  riverWave: string; // líneas de corriente (rgba, ya con alpha)
+  safe: string; // franjas seguras (inicio y mediana)
+  road: string;
+  roadLine: string; // marcas viales discontinuas (rgba)
+  // Vehículos
+  carBodies: string[]; // 4 variantes de coche
+  carGlass: string; // parabrisas del coche (rgba)
+  truckBody: string;
+  truckCab: string;
+  truckGlass: string; // parabrisas del camión (rgba)
+  wheel: string; // ruedas de coches y camiones
+  // Río
+  log: string;
+  logLine: string; // vetas y anillos del tronco
+  turtle: string; // aletas/contorno de la tortuga
+  turtleShell: string; // caparazón
+  turtleSubmerged: string; // aro de la tortuga sumergida (rgba, ya con alpha)
+  // Rana
+  frog: string;
+  frogDark: string; // patas y partes oscuras
+  frogEye: string;
+  frogPupil: string;
+  // HUD interno
+  hudBand: string; // franja translúcida superior (rgba)
+  hud: string; // texto del HUD
+  timeTrack: string; // fondo de la barra de tiempo (rgba)
+  timeHigh: string; // > 50 % de tiempo
+  timeMid: string; // 25–50 %
+  timeLow: string; // < 25 %
+  glow: number; // shadowBlur de rana, vehículos y apoyos; 0 = sin glow
+}
+
+const SKIN_PALETTES: Record<SkinId, Palette> = {
+  // Los colores del arcade original: asfalto negro, río azul, orilla verde,
+  // troncos marrones, tortugas verdes y coches de colores planos.
+  clasico: {
+    goalRow: "#0e2f16",
+    goalMouth: "#1f6b2e",
+    goalBorder: "#ffcc33",
+    goalFilled: "#2fbf2f",
+    river: "#0a2a4a",
+    riverWave: "rgba(120,200,255,0.08)",
+    safe: "#123d1a",
+    road: "#0d0d12",
+    roadLine: "rgba(255,255,255,0.16)",
+    carBodies: ["#ff3b3b", "#ffd23b", "#3b9bff", "#ff7ad9"],
+    carGlass: "rgba(255,255,255,0.35)",
+    truckBody: "#9aa3ad",
+    truckCab: "#5b6570",
+    truckGlass: "rgba(255,255,255,0.25)",
+    wheel: "#111111",
+    log: "#6b4423",
+    logLine: "#4a2f18",
+    turtle: "#3ddc6b",
+    turtleShell: "#2a9e4d",
+    turtleSubmerged: "rgba(61,220,107,0.35)",
+    frog: "#5cff5c",
+    frogDark: "#2fbf2f",
+    frogEye: "#ffffff",
+    frogPupil: "#0a0a0f",
+    hudBand: "rgba(0,0,0,0.62)",
+    hud: "#ffffff",
+    timeTrack: "rgba(255,255,255,0.12)",
+    timeHigh: "#39ff14",
+    timeMid: "#ffd23b",
+    timeLow: "#ff3b3b",
+    glow: 0,
+  },
+  // Neón saturado sobre la paleta de la app (cyan/magenta/amarillo/verde) con
+  // glow. El río queda azul profundo y los troncos naranja neón: el apoyo salta
+  // a la vista. La rana es amarilla para no confundirse con las tortugas verdes.
+  neon: {
+    goalRow: "#0a1220",
+    goalMouth: "#062b22",
+    goalBorder: "#00ff88",
+    goalFilled: "#00f5ff",
+    river: "#071a33",
+    riverWave: "rgba(0,245,255,0.16)",
+    safe: "#1a0b2e",
+    road: "#0a0a12",
+    roadLine: "rgba(245,255,0,0.30)",
+    // 4 tonos de hue bien separados para que los carriles no se confundan.
+    carBodies: ["#ff2d7e", "#00f5ff", "#ff3b00", "#00ff88"],
+    carGlass: "rgba(255,255,255,0.42)",
+    truckBody: "#d8b4fe",
+    truckCab: "#8b5cf6",
+    truckGlass: "rgba(255,255,255,0.30)",
+    wheel: "#05050a",
+    // Naranja quemado: contrasta con el azul del río y deja un salto de
+    // luminancia claro respecto a la rana amarilla que va encima.
+    log: "#f26a00",
+    logLine: "#8f3300",
+    turtle: "#00ff88",
+    turtleShell: "#00b45f",
+    turtleSubmerged: "rgba(0,255,136,0.30)",
+    frog: "#f5ff00",
+    frogDark: "#b8c400",
+    frogEye: "#ffffff",
+    frogPupil: "#0a0a0f",
+    hudBand: "rgba(0,0,0,0.66)",
+    hud: "#00f5ff",
+    timeTrack: "rgba(0,245,255,0.14)",
+    timeHigh: "#00ff88",
+    timeMid: "#f5ff00",
+    timeLow: "#ff2d7e",
+    glow: 10,
+  },
+  // CRT vintage de doble fósforo: ámbar cálido para asfalto, vehículos y
+  // troncos; verde apagado para río, orilla y rana. Saturación baja, pero
+  // con luminancia real: el tronco ámbar destaca sobre el agua verde oscura y
+  // la tortuga (verde azulado) no se confunde con la rana (verde amarillento).
+  retro: {
+    goalRow: "#12180d",
+    goalMouth: "#2a3a18",
+    goalBorder: "#ffb000",
+    goalFilled: "#c9922b",
+    river: "#0a1a14",
+    riverWave: "rgba(140,255,200,0.07)",
+    safe: "#33290f", // oliva cálido: subido de luminancia para no fundirse con el asfalto
+    road: "#0b0906",
+    roadLine: "rgba(255,190,90,0.20)",
+    carBodies: ["#ff9e3d", "#d9b44a", "#a8c46a", "#e0663d"],
+    carGlass: "rgba(255,220,160,0.28)",
+    truckBody: "#cbb894",
+    truckCab: "#8a7350",
+    truckGlass: "rgba(255,220,160,0.20)",
+    wheel: "#100c06",
+    log: "#c98b3a", // bronce ámbar sobre agua verde oscura
+    logLine: "#8a5a1e",
+    turtle: "#5fbf9e", // verde azulado, distinto del verde de la rana
+    turtleShell: "#3a8068",
+    turtleSubmerged: "rgba(95,191,158,0.30)",
+    frog: "#a6f06a",
+    frogDark: "#4f9440",
+    frogEye: "#f5e6c8",
+    frogPupil: "#0a0a0f",
+    hudBand: "rgba(10,6,0,0.68)",
+    hud: "#ffd28a",
+    timeTrack: "rgba(255,200,120,0.12)",
+    timeHigh: "#a6f06a",
+    timeMid: "#ffb000",
+    timeLow: "#e0663d",
+    glow: 5,
+  },
 };
 
-const CAR_COLORS = ["#ff3b3b", "#ffd23b", "#3b9bff", "#ff7ad9"];
+// Aplica el bloom del skin a un dibujo puntual. Con glow = 0 (clásico) no
+// toca el contexto, así que el render clásico es idéntico al original.
+function withGlow(
+  ctx: CanvasRenderingContext2D,
+  pal: Palette,
+  color: string,
+  draw: () => void,
+) {
+  if (pal.glow <= 0) {
+    draw();
+    return;
+  }
+  ctx.save();
+  ctx.shadowColor = color;
+  ctx.shadowBlur = pal.glow;
+  draw();
+  ctx.restore();
+}
 
 const HUD_BAND_H = 18; // franja translúcida del HUD sobre la fila de metas
 const TIME_BAR_H = 6; // barra de tiempo, al pie de la fila 0
 
-function drawZones(ctx: CanvasRenderingContext2D) {
+function drawZones(ctx: CanvasRenderingContext2D, pal: Palette) {
   // Metas
-  ctx.fillStyle = COLORS.goalRow;
+  ctx.fillStyle = pal.goalRow;
   ctx.fillRect(0, ROW_GOALS * CELL, CANVAS_W, CELL);
   // Río
-  ctx.fillStyle = COLORS.river;
+  ctx.fillStyle = pal.river;
   ctx.fillRect(
     0,
     ROW_RIVER_TOP * CELL,
     CANVAS_W,
     (ROW_RIVER_BOT - ROW_RIVER_TOP + 1) * CELL,
   );
-  ctx.fillStyle = COLORS.riverWave;
+  ctx.fillStyle = pal.riverWave;
   for (let r = ROW_RIVER_TOP; r <= ROW_RIVER_BOT; r++) {
     ctx.fillRect(0, r * CELL + CELL - 3, CANVAS_W, 2);
   }
   // Franjas seguras
-  ctx.fillStyle = COLORS.safe;
+  ctx.fillStyle = pal.safe;
   ctx.fillRect(0, ROW_SAFE_MID * CELL, CANVAS_W, CELL);
   ctx.fillRect(0, ROW_START * CELL, CANVAS_W, CELL);
   // Carretera
-  ctx.fillStyle = COLORS.road;
+  ctx.fillStyle = pal.road;
   ctx.fillRect(
     0,
     ROW_ROAD_TOP * CELL,
     CANVAS_W,
     (ROW_ROAD_BOT - ROW_ROAD_TOP + 1) * CELL,
   );
-  ctx.fillStyle = COLORS.roadLine;
+  ctx.fillStyle = pal.roadLine;
   for (let r = ROW_ROAD_TOP + 1; r <= ROW_ROAD_BOT; r++) {
     for (let x = 0; x < CANVAS_W; x += 40) {
       ctx.fillRect(x + 6, r * CELL - 1, 20, 2);
@@ -483,20 +644,26 @@ function drawZones(ctx: CanvasRenderingContext2D) {
   }
 }
 
-function drawGoals(ctx: CanvasRenderingContext2D, goals: boolean[]) {
+function drawGoals(
+  ctx: CanvasRenderingContext2D,
+  goals: boolean[],
+  pal: Palette,
+) {
   const top = ROW_GOALS * CELL + HUD_BAND_H;
   const h = CELL - HUD_BAND_H - TIME_BAR_H;
   GOAL_COLS.forEach((col, i) => {
     const x = col * CELL;
     const w = GOAL_WIDTH * CELL;
-    ctx.fillStyle = COLORS.goalMouth;
+    ctx.fillStyle = pal.goalMouth;
     ctx.fillRect(x, top, w, h);
-    ctx.strokeStyle = COLORS.goalBorder;
+    ctx.strokeStyle = pal.goalBorder;
     ctx.lineWidth = 2;
-    ctx.strokeRect(x + 1, top + 1, w - 2, h - 2);
+    withGlow(ctx, pal, pal.goalBorder, () =>
+      ctx.strokeRect(x + 1, top + 1, w - 2, h - 2),
+    );
     if (goals[i]) {
       // Silueta de rana en la boca ya ocupada.
-      ctx.fillStyle = COLORS.frogDark;
+      ctx.fillStyle = pal.goalFilled;
       ctx.beginPath();
       ctx.ellipse(x + w / 2, top + h / 2, 12, 8, 0, 0, Math.PI * 2);
       ctx.fill();
@@ -511,15 +678,17 @@ function drawCar(
   x: number,
   y: number,
   v: number,
+  pal: Palette,
 ) {
   const w = CELL - 6;
   const h = CELL - 14;
   const top = y + 7;
-  ctx.fillStyle = CAR_COLORS[v % CAR_COLORS.length];
-  ctx.fillRect(x + 3, top, w, h);
-  ctx.fillStyle = "rgba(255,255,255,0.35)";
+  const body = pal.carBodies[v % pal.carBodies.length];
+  ctx.fillStyle = body;
+  withGlow(ctx, pal, body, () => ctx.fillRect(x + 3, top, w, h));
+  ctx.fillStyle = pal.carGlass;
   ctx.fillRect(x + 8, top + 4, w - 10, 5);
-  ctx.fillStyle = "#111";
+  ctx.fillStyle = pal.wheel;
   ctx.beginPath();
   ctx.arc(x + 10, top + h, 4, 0, Math.PI * 2);
   ctx.arc(x + w - 4, top + h, 4, 0, Math.PI * 2);
@@ -531,17 +700,18 @@ function drawTruck(
   x: number,
   y: number,
   width: number,
+  pal: Palette,
 ) {
   const w = width * CELL - 6;
   const h = CELL - 12;
   const top = y + 6;
-  ctx.fillStyle = COLORS.truckBody;
-  ctx.fillRect(x + 3, top, w, h);
-  ctx.fillStyle = COLORS.truckCab;
+  ctx.fillStyle = pal.truckBody;
+  withGlow(ctx, pal, pal.truckBody, () => ctx.fillRect(x + 3, top, w, h));
+  ctx.fillStyle = pal.truckCab;
   ctx.fillRect(x + 3, top, CELL - 8, h);
-  ctx.fillStyle = "rgba(255,255,255,0.25)";
+  ctx.fillStyle = pal.truckGlass;
   ctx.fillRect(x + 8, top + 4, CELL - 18, 6);
-  ctx.fillStyle = "#111";
+  ctx.fillStyle = pal.wheel;
   ctx.beginPath();
   ctx.arc(x + 14, top + h, 4, 0, Math.PI * 2);
   ctx.arc(x + w - 8, top + h, 4, 0, Math.PI * 2);
@@ -553,13 +723,16 @@ function drawLog(
   x: number,
   y: number,
   width: number,
+  pal: Palette,
 ) {
   const w = width * CELL - 4;
   const h = CELL - 10;
   const top = y + 5;
-  ctx.fillStyle = COLORS.log;
-  ctx.fillRect(x + 2, top, w, h);
-  ctx.strokeStyle = COLORS.logLine;
+  // El tronco es el apoyo: se dibuja lleno y luminoso para que nunca se
+  // confunda con el agua de debajo.
+  ctx.fillStyle = pal.log;
+  withGlow(ctx, pal, pal.log, () => ctx.fillRect(x + 2, top, w, h));
+  ctx.strokeStyle = pal.logLine;
   ctx.lineWidth = 1.5;
   for (let i = 1; i < 4; i++) {
     ctx.beginPath();
@@ -568,7 +741,7 @@ function drawLog(
     ctx.stroke();
   }
   // Anillos de los extremos
-  ctx.strokeStyle = COLORS.logLine;
+  ctx.strokeStyle = pal.logLine;
   ctx.beginPath();
   ctx.ellipse(x + 4, top + h / 2, 3, h / 2 - 2, 0, 0, Math.PI * 2);
   ctx.stroke();
@@ -580,27 +753,32 @@ function drawTurtles(
   y: number,
   width: number,
   submerged: boolean,
+  pal: Palette,
 ) {
   for (let i = 0; i < width; i++) {
     const cx = x + i * CELL + CELL / 2;
     const cy = y + CELL / 2;
     if (submerged) {
-      ctx.strokeStyle = "rgba(61,220,107,0.35)";
+      // Sumergida = solo un aro translúcido, sin relleno ni glow: la
+      // diferencia con la tortuga visible tiene que leerse de un vistazo.
+      ctx.strokeStyle = pal.turtleSubmerged;
       ctx.lineWidth = 1.5;
       ctx.beginPath();
       ctx.arc(cx, cy, CELL / 2 - 5, 0, Math.PI * 2);
       ctx.stroke();
       continue;
     }
-    ctx.fillStyle = COLORS.turtle;
-    ctx.beginPath();
-    ctx.arc(cx, cy, CELL / 2 - 4, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = COLORS.turtleShell;
+    ctx.fillStyle = pal.turtle;
+    withGlow(ctx, pal, pal.turtle, () => {
+      ctx.beginPath();
+      ctx.arc(cx, cy, CELL / 2 - 4, 0, Math.PI * 2);
+      ctx.fill();
+    });
+    ctx.fillStyle = pal.turtleShell;
     ctx.beginPath();
     ctx.arc(cx, cy, CELL / 2 - 9, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = COLORS.turtle;
+    ctx.strokeStyle = pal.turtle;
     ctx.lineWidth = 1.5;
     for (let s = 0; s < 4; s++) {
       const a = (Math.PI / 2) * s + Math.PI / 4;
@@ -615,23 +793,27 @@ function drawTurtles(
   }
 }
 
-function drawEntities(ctx: CanvasRenderingContext2D, lanes: Lane[]) {
+function drawEntities(
+  ctx: CanvasRenderingContext2D,
+  lanes: Lane[],
+  pal: Palette,
+) {
   for (const lane of lanes) {
     const y = lane.row * CELL;
     for (const entity of lane.entities) {
       const x = entity.col * CELL;
       switch (entity.type) {
         case "car":
-          drawCar(ctx, x, y, entity.variant ?? 0);
+          drawCar(ctx, x, y, entity.variant ?? 0, pal);
           break;
         case "truck":
-          drawTruck(ctx, x, y, entity.width);
+          drawTruck(ctx, x, y, entity.width, pal);
           break;
         case "log":
-          drawLog(ctx, x, y, entity.width);
+          drawLog(ctx, x, y, entity.width, pal);
           break;
         case "turtle":
-          drawTurtles(ctx, x, y, entity.width, entity.submerged === true);
+          drawTurtles(ctx, x, y, entity.width, entity.submerged === true, pal);
           break;
       }
     }
@@ -645,7 +827,7 @@ const FACING_ANGLE: Record<Direction, number> = {
   left: -Math.PI / 2,
 };
 
-function drawFrog(ctx: CanvasRenderingContext2D, frog: Frog) {
+function drawFrog(ctx: CanvasRenderingContext2D, frog: Frog, pal: Palette) {
   // Interpolación del salto: la rana se desplaza entre celdas en JUMP_MS.
   const t = frog.animating ? Math.min(1, frog.animT / JUMP_MS) : 1;
   const col = frog.animating
@@ -665,7 +847,7 @@ function drawFrog(ctx: CanvasRenderingContext2D, frog: Frog) {
   ctx.scale(hop, hop);
 
   // Patas extendidas durante el salto
-  ctx.fillStyle = COLORS.frogDark;
+  ctx.fillStyle = pal.frogDark;
   const legOut = frog.animating ? 5 : 2;
   ctx.fillRect(-15 - legOut, -8, 8, 5);
   ctx.fillRect(7 + legOut, -8, 8, 5);
@@ -673,18 +855,20 @@ function drawFrog(ctx: CanvasRenderingContext2D, frog: Frog) {
   ctx.fillRect(7 + legOut, 4, 8, 5);
 
   // Cuerpo 28 × 24
-  ctx.fillStyle = COLORS.frog;
-  ctx.beginPath();
-  ctx.ellipse(0, 0, 14, 12, 0, 0, Math.PI * 2);
-  ctx.fill();
+  ctx.fillStyle = pal.frog;
+  withGlow(ctx, pal, pal.frog, () => {
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 14, 12, 0, 0, Math.PI * 2);
+    ctx.fill();
+  });
 
   // Ojos
-  ctx.fillStyle = "#ffffff";
+  ctx.fillStyle = pal.frogEye;
   ctx.beginPath();
   ctx.arc(-6, -7, 4, 0, Math.PI * 2);
   ctx.arc(6, -7, 4, 0, Math.PI * 2);
   ctx.fill();
-  ctx.fillStyle = "#0a0a0f";
+  ctx.fillStyle = pal.frogPupil;
   ctx.beginPath();
   ctx.arc(-6, -8, 2, 0, Math.PI * 2);
   ctx.arc(6, -8, 2, 0, Math.PI * 2);
@@ -692,15 +876,15 @@ function drawFrog(ctx: CanvasRenderingContext2D, frog: Frog) {
   ctx.restore();
 }
 
-function drawHud(ctx: CanvasRenderingContext2D, data: GameData) {
+function drawHud(ctx: CanvasRenderingContext2D, data: GameData, pal: Palette) {
   // Franja translúcida: el HUD interno comparte fila con las bocas destino,
   // así que se reserva el borde superior de la fila 0 para no taparlas.
-  ctx.fillStyle = "rgba(0,0,0,0.62)";
+  ctx.fillStyle = pal.hudBand;
   ctx.fillRect(0, 0, CANVAS_W, HUD_BAND_H);
 
   ctx.font = "700 13px ui-monospace, monospace";
   ctx.textBaseline = "middle";
-  ctx.fillStyle = COLORS.hud;
+  ctx.fillStyle = pal.hud;
   ctx.textAlign = "left";
   ctx.fillText(`SCORE ${data.score}`, 8, HUD_BAND_H / 2);
   ctx.textAlign = "center";
@@ -708,11 +892,11 @@ function drawHud(ctx: CanvasRenderingContext2D, data: GameData) {
 
   // Vidas: un círculo verde por vida restante, arriba a la derecha.
   for (let i = 0; i < data.lives; i++) {
-    ctx.fillStyle = COLORS.frog;
+    ctx.fillStyle = pal.frog;
     ctx.beginPath();
     ctx.arc(CANVAS_W - 12 - i * 16, HUD_BAND_H / 2, 5, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = "#0a0a0f";
+    ctx.fillStyle = pal.frogPupil;
     ctx.beginPath();
     ctx.arc(CANVAS_W - 14 - i * 16, HUD_BAND_H / 2 - 2, 1.4, 0, Math.PI * 2);
     ctx.arc(CANVAS_W - 10 - i * 16, HUD_BAND_H / 2 - 2, 1.4, 0, Math.PI * 2);
@@ -723,19 +907,19 @@ function drawHud(ctx: CanvasRenderingContext2D, data: GameData) {
   const total = roundTimeFor(data.level);
   const ratio = Math.max(0, Math.min(1, data.timeLeft / total));
   const y = CELL - TIME_BAR_H;
-  ctx.fillStyle = "rgba(255,255,255,0.12)";
+  ctx.fillStyle = pal.timeTrack;
   ctx.fillRect(0, y, CANVAS_W, TIME_BAR_H);
   ctx.fillStyle =
-    ratio > 0.5 ? "#39ff14" : ratio > 0.25 ? "#ffd23b" : "#ff3b3b";
+    ratio > 0.5 ? pal.timeHigh : ratio > 0.25 ? pal.timeMid : pal.timeLow;
   ctx.fillRect(0, y, CANVAS_W * ratio, TIME_BAR_H);
 }
 
-function draw(ctx: CanvasRenderingContext2D, data: GameData) {
-  drawZones(ctx);
-  drawEntities(ctx, data.lanes);
-  drawGoals(ctx, data.goals);
-  drawFrog(ctx, data.frog);
-  drawHud(ctx, data);
+function draw(ctx: CanvasRenderingContext2D, data: GameData, pal: Palette) {
+  drawZones(ctx, pal);
+  drawEntities(ctx, data.lanes, pal);
+  drawGoals(ctx, data.goals, pal);
+  drawFrog(ctx, data.frog, pal);
+  drawHud(ctx, data, pal);
 }
 
 export type RanariaGameProps = GameComponentProps;
@@ -752,6 +936,7 @@ export const RanariaGame = forwardRef<RanariaGameHandle, RanariaGameProps>(
   function RanariaGame(
     {
       paused,
+      skin,
       onScoreChange,
       onLivesChange,
       onLevelChange,
@@ -763,6 +948,9 @@ export const RanariaGame = forwardRef<RanariaGameHandle, RanariaGameProps>(
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
     const dataRef = useRef<GameData>(createInitialGameData());
     const pausedRef = useRef(paused);
+    // skinRef: el loop de canvas lee el skin activo sin re-suscribir el efecto.
+    const skinRef = useRef<SkinId>(skin);
+    skinRef.current = skin;
     const callbacksRef = useRef({
       onScoreChange,
       onLivesChange,
@@ -888,7 +1076,7 @@ export const RanariaGame = forwardRef<RanariaGameHandle, RanariaGameProps>(
         // En pausa se congela update() pero se sigue dibujando.
         if (!pausedRef.current) update(data, dt);
 
-        draw(ctx!, data);
+        draw(ctx!, data, SKIN_PALETTES[skinRef.current]);
         reportChanges();
 
         if (data.state === "gameover") {
