@@ -292,13 +292,39 @@ function startJump(data: GameData, dir: Direction) {
 }
 
 function killFrog(data: GameData) {
-  // Paso 7: por ahora la muerte termina la partida directamente.
   if (data.state !== "playing") return;
-  data.state = "gameover";
+  data.lives -= 1;
+  if (data.lives <= 0) {
+    // El loop emite onLivesChange(0) en reportChanges() y, en ese mismo frame,
+    // onGameOver(score) al ver el estado "gameover": ese es el orden del spec.
+    data.lives = 0;
+    data.state = "gameover";
+    return;
+  }
+  respawnFrog(data);
+}
+
+// Devuelve la rana a la base de inicio y reinicia el temporizador de la ronda.
+// Se usa tanto al ocupar una boca como al perder una vida.
+function respawnFrog(data: GameData) {
+  data.frog = createFrog();
+  data.pendingDir = null;
+  data.maxRow = ROW_START;
+  data.timeLeft = roundTimeFor(data.level);
+}
+
+function completeRound(data: GameData) {
+  data.score += PTS_ROUND;
+  data.goals.fill(false);
+  data.level += 1;
+  // Carriles nuevos: mismo trazado, un 15 % más rápido por nivel.
+  data.lanes = buildLanes(data.level);
+  respawnFrog(data);
 }
 
 function onGoalFilled(data: GameData) {
-  // Paso 6: reinicio de rana/temporizador y cierre de ronda al llenar las 5.
+  if (data.goals.every(Boolean)) completeRound(data);
+  else respawnFrog(data);
 }
 
 // Resolución de la celda de destino al aterrizar: puntuación por avance,
