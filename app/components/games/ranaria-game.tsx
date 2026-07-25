@@ -111,6 +111,65 @@ interface GameData {
   state: "playing" | "gameover";
 }
 
+// ── Construcción del mapa ───────────────────────────────────────────────────
+// Cada carril tiene entidades de un único ancho: así todas recorren el mismo
+// ciclo (COLS + width) y el reparto inicial equiespaciado se conserva intacto
+// tras reaparecer por el lado opuesto, sin que los huecos se cierren con el
+// tiempo. El hueco resultante es `period - width` columnas, siempre ≥ 1.
+interface LaneBlueprint {
+  row: number;
+  type: Entity["type"];
+  width: number; // en columnas
+  count: number; // entidades del carril (≥ 2)
+  speed: number; // px/frame a 60 fps, antes de escalar por nivel
+  dir: 1 | -1;
+}
+
+// Carretera (filas 8–12) y río (filas 1–6), con sentidos alternos por carril.
+const LANE_BLUEPRINTS: LaneBlueprint[] = [
+  // Río: de la orilla lejana (fila 1) a la cercana (fila 6).
+  { row: 1, type: "log", width: 3, count: 3, speed: 2.4, dir: -1 },
+  { row: 2, type: "turtle", width: 3, count: 3, speed: 1.4, dir: 1 },
+  { row: 3, type: "log", width: 2, count: 4, speed: 2.0, dir: -1 },
+  { row: 4, type: "log", width: 4, count: 2, speed: 1.0, dir: 1 },
+  { row: 5, type: "turtle", width: 2, count: 4, speed: 1.6, dir: -1 },
+  { row: 6, type: "log", width: 3, count: 3, speed: 1.2, dir: 1 },
+  // Carretera: de la más lejana (fila 8) a la más cercana al inicio (fila 12).
+  { row: 8, type: "car", width: 1, count: 3, speed: 3.4, dir: -1 },
+  { row: 9, type: "truck", width: 3, count: 2, speed: 1.8, dir: 1 },
+  { row: 10, type: "car", width: 1, count: 4, speed: 2.8, dir: -1 },
+  { row: 11, type: "truck", width: 2, count: 2, speed: 2.2, dir: 1 },
+  { row: 12, type: "car", width: 1, count: 3, speed: 1.6, dir: -1 },
+];
+
+const TURTLE_CYCLE_MS = TURTLE_VISIBLE_MS + TURTLE_SUBMERGED_MS;
+
+function buildLane(bp: LaneBlueprint, factor: number): Lane {
+  // Ciclo completo de una entidad: cruza el carril y vuelve a entrar.
+  const period = (COLS + bp.width) / bp.count;
+  const entities: Entity[] = Array.from({ length: bp.count }, (_, i) => {
+    const entity: Entity = {
+      col: -bp.width + i * period,
+      width: bp.width,
+      type: bp.type,
+      variant: i,
+    };
+    if (bp.type === "turtle") {
+      // Fases escalonadas: los grupos de un mismo carril nunca se sumergen a la
+      // vez, así que siempre queda alguno donde apoyarse.
+      entity.cycleT = (i * TURTLE_CYCLE_MS) / bp.count;
+      entity.submerged = false;
+    }
+    return entity;
+  });
+  return { row: bp.row, speed: bp.speed * factor, dir: bp.dir, entities };
+}
+
+function buildLanes(level: number): Lane[] {
+  const factor = speedFactorFor(level);
+  return LANE_BLUEPRINTS.map((bp) => buildLane(bp, factor));
+}
+
 export type RanariaGameProps = GameComponentProps;
 export type RanariaGameHandle = GameComponentHandle;
 
