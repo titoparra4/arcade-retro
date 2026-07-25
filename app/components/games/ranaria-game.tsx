@@ -207,19 +207,58 @@ const isRiverRow = (row: number) =>
   row >= ROW_RIVER_TOP && row <= ROW_RIVER_BOT;
 const isRoadRow = (row: number) => row >= ROW_ROAD_TOP && row <= ROW_ROAD_BOT;
 
-// ── Colisiones y soporte (paso 5) ───────────────────────────────────────────
+// ── Colisiones y soporte ────────────────────────────────────────────────────
+// Todas las pruebas usan el centro de la rana contra el rango [col, col+width)
+// de la entidad: el atropello o el apoyo se deciden por dónde está el cuerpo,
+// no por un roce de bordes.
+function covers(entity: Entity, center: number) {
+  return center >= entity.col && center < entity.col + entity.width;
+}
+
 function checkRoadCollision(frog: Frog, lanes: Lane[]): boolean {
-  // Paso 5.
-  void frog;
-  void lanes;
+  if (!isRoadRow(frog.row)) return false;
+  const center = frogCenter(frog);
+  for (const lane of lanes) {
+    if (lane.row !== frog.row) continue;
+    if (!isRoadRow(lane.row)) continue;
+    for (const entity of lane.entities) {
+      if (entity.type !== "car" && entity.type !== "truck") continue;
+      if (covers(entity, center)) return true;
+    }
+  }
   return false;
 }
 
 function getSupport(frog: Frog, lanes: Lane[]): Entity | null {
-  // Paso 5.
-  void frog;
-  void lanes;
+  if (!isRiverRow(frog.row)) return null;
+  const center = frogCenter(frog);
+  for (const lane of lanes) {
+    if (lane.row !== frog.row) continue;
+    for (const entity of lane.entities) {
+      if (!covers(entity, center)) continue;
+      // Una tortuga sumergida deja de ser apoyo.
+      if (entity.type === "turtle" && entity.submerged) return null;
+      return entity;
+    }
+  }
   return null;
+}
+
+// Resultado de aterrizar en la fila de metas.
+type GoalOutcome = "filled" | "death";
+
+function checkGoal(data: GameData): GoalOutcome {
+  const center = frogCenter(data.frog);
+  const index = GOAL_COLS.findIndex(
+    (col) => center >= col && center < col + GOAL_WIDTH,
+  );
+  // Fuera de boca (la orilla entre bocas) o boca ya ocupada: muerte.
+  if (index === -1 || data.goals[index]) return "death";
+
+  data.goals[index] = true;
+  data.score +=
+    PTS_GOAL + Math.floor(Math.max(0, data.timeLeft)) * PTS_TIME_BONUS;
+  return "filled";
 }
 
 // ── Motor ───────────────────────────────────────────────────────────────────
@@ -252,14 +291,38 @@ function startJump(data: GameData, dir: Direction) {
   frog.animT = 0;
 }
 
-// Resolución de la celda de destino al aterrizar (muerte / meta / puntuación).
-// Se completa en los pasos 5–7; aquí solo se paga el avance de fila.
+function killFrog(data: GameData) {
+  // Paso 7: por ahora la muerte termina la partida directamente.
+  if (data.state !== "playing") return;
+  data.state = "gameover";
+}
+
+function onGoalFilled(data: GameData) {
+  // Paso 6: reinicio de rana/temporizador y cierre de ronda al llenar las 5.
+}
+
+// Resolución de la celda de destino al aterrizar: puntuación por avance,
+// meta alcanzada y las muertes que dependen de dónde cae la rana.
 function resolveLanding(data: GameData) {
   const frog = data.frog;
   if (frog.row < data.maxRow) {
     data.score += PTS_ROW_ADVANCE * (data.maxRow - frog.row);
     data.maxRow = frog.row;
   }
+
+  if (frog.row === ROW_GOALS) {
+    if (checkGoal(data) === "death") killFrog(data);
+    else onGoalFilled(data);
+    return;
+  }
+
+  if (checkRoadCollision(frog, data.lanes)) {
+    killFrog(data);
+    return;
+  }
+
+  // Caer al agua: fila de río sin tronco ni tortugas visibles debajo.
+  if (isRiverRow(frog.row) && !getSupport(frog, data.lanes)) killFrog(data);
 }
 
 function update(data: GameData, dt: number) {
@@ -301,17 +364,35 @@ function update(data: GameData, dt: number) {
 
   if (data.state !== "playing") return;
 
-  // 3. Río: la rana viaja con la entidad que la sostiene.
-  if (!frog.animating && isRiverRow(frog.row)) {
-    const lane = data.lanes.find((l) => l.row === frog.row);
-    const support = getSupport(frog, data.lanes);
-    if (support && lane) {
-      frog.col += ((lane.speed / CELL) * lane.dir * dt) / 16;
+  // 3. Peligros continuos: mientras la rana está posada, el mundo se le echa
+  //    encima (un coche la alcanza, o la tortuga que la sostiene se sumerge).
+  if (!frog.animating) {
+    if (checkRoadCollision(frog, data.lanes)) {
+      killFrog(data);
+      return;
+    }
+
+    if (isRiverRow(frog.row)) {
+      const support = getSupport(frog, data.lanes);
+      if (!support) {
+        killFrog(data);
+        return;
+      }
+      // Río: la rana viaja con la entidad que la sostiene.
+      const lane = data.lanes.find((l) => l.row === frog.row);
+      if (lane) frog.col += ((lane.speed / CELL) * lane.dir * dt) / 16;
+      // Arrastrada fuera por un borde del río.
+      const center = frogCenter(frog);
+      if (center < 0 || center > COLS) {
+        killFrog(data);
+        return;
+      }
     }
   }
 
   // 4. Temporizador de ronda.
   data.timeLeft = Math.max(0, data.timeLeft - dt / 1000);
+  if (data.timeLeft <= 0) killFrog(data);
 }
 
 // ── Dibujo ──────────────────────────────────────────────────────────────────
