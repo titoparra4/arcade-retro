@@ -2,6 +2,7 @@ import type { ForwardRefExoticComponent, RefAttributes } from "react";
 import { AsteroidsGame } from "./asteroids-game";
 import { BloqueBusterGame } from "./bloque-buster-game";
 import { CaidaGame } from "./caida-game";
+import { RanariaGame } from "./ranaria-game";
 import { SerpentinaGame } from "./serpentina-game";
 
 // Sistema de skins compartido: fuente de verdad del tipo y de las opciones del
@@ -87,6 +88,22 @@ export const GAME_REGISTRY: Partial<Record<string, GameRegistryEntry>> = {
     touchControls: [
       { code: "ArrowLeft", label: "◄", mode: "hold", group: "pad" },
       { code: "ArrowRight", label: "►", mode: "hold", group: "pad" },
+    ],
+  },
+  ranaria: {
+    Component: RanariaGame,
+    extraStatLabel: "Tiempo",
+    supportsSkins: true,
+    // Frogger salta una celda por pulsación: handleKeyDown guarda la dirección en
+    // `pendingDir` y el loop la consume en el frame siguiente. No sondea teclas por
+    // frame → "tap". No se usa "repeat" a propósito: la animación de salto dura
+    // 120 ms, justo el intervalo de auto-repetición, así que mantener el dedo
+    // encadenaría saltos y cruzaría la carretera sin poder frenar en los huecos.
+    touchControls: [
+      { code: "ArrowUp", label: "▲", mode: "tap", group: "pad" },
+      { code: "ArrowDown", label: "▼", mode: "tap", group: "pad" },
+      { code: "ArrowLeft", label: "◄", mode: "tap", group: "pad" },
+      { code: "ArrowRight", label: "►", mode: "tap", group: "pad" },
     ],
   },
   serpentina: {
