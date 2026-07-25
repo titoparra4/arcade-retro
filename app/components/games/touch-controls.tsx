@@ -17,21 +17,36 @@ const DPAD_POS: Record<string, { col: number; row: number }> = {
   ArrowRight: { col: 3, row: 2 },
   ArrowDown: { col: 2, row: 3 },
 };
-const DPAD_GLYPH: Record<string, string> = {
-  ArrowUp: "▲",
-  ArrowLeft: "◄",
-  ArrowRight: "►",
-  ArrowDown: "▼",
+// Flechas triangulares en el viewBox 24×24 del asset MK-II. Se usa SVG en vez de
+// glifos de texto: se renderizan igual en toda plataforma y aceptan drop-shadow.
+const DPAD_ARROW_PATH: Record<string, string> = {
+  ArrowUp: "M12 4 L20 16 L4 16 Z",
+  ArrowRight: "M8 4 L20 12 L8 20 Z",
+  ArrowDown: "M4 8 L20 8 L12 20 Z",
+  ArrowLeft: "M16 4 L16 20 L4 12 Z",
 };
 
-// Color neón por botón de acción, por orden: el primario (fuego/soltar) queda
-// magenta; el secundario (empuje/rotar) cian. Todos sobre cápsula oscura.
-const ACTION_COLORS = [
-  "var(--cyan)",
-  "var(--magenta)",
-  "var(--green)",
-  "var(--yellow)",
-];
+function DpadArrow({ code }: { code: string }) {
+  return (
+    <svg className="dpad-arrow" viewBox="0 0 24 24" aria-hidden>
+      <path d={DPAD_ARROW_PATH[code]} fill="currentColor" />
+    </svg>
+  );
+}
+
+// Letra de cada botón de acción, asignada de DERECHA a IZQUIERDA: el botón más a
+// la derecha es "A" (convención NES del asset: B izquierda, A derecha). Con más de
+// 4 acciones los sobrantes no reciben letra y caen al glifo de su label.
+const ACTION_LETTERS = ["A", "B", "C", "D"] as const;
+
+// El color va atado a la letra, no al índice del array: así "A" es siempre magenta
+// en todos los juegos, sin depender de cuántas acciones defina cada uno.
+const ACTION_COLORS: Record<string, string> = {
+  A: "var(--magenta)",
+  B: "var(--cyan)",
+  C: "var(--green)",
+  D: "var(--yellow)",
+};
 
 // El `key` se deriva del `code` por corrección; los juegos leen e.code, no e.key.
 function codeToKey(code: string): string {
@@ -173,7 +188,7 @@ export function TouchControls({ buttons, paused }: TouchControlsProps) {
                 style={style}
                 aria-hidden
               >
-                {DPAD_GLYPH[code]}
+                <DpadArrow code={code} />
               </div>
             );
           }
@@ -186,10 +201,18 @@ export function TouchControls({ buttons, paused }: TouchControlsProps) {
               aria-label={buttons[i].label}
               {...pointerProps(i)}
             >
-              {DPAD_GLYPH[code]}
+              <DpadArrow code={code} />
             </button>
           );
         })}
+        {/* Hub del asset MK-II: ocupa la celda central, que la cruz deja vacía. */}
+        <div
+          className="dpad-hub"
+          style={{ gridColumn: 2, gridRow: 2 }}
+          aria-hidden
+        >
+          <span className="dpad-hub-gem" />
+        </div>
       </div>
 
       {actions.length > 0 && (
@@ -199,8 +222,10 @@ export function TouchControls({ buttons, paused }: TouchControlsProps) {
             const space = b.label.indexOf(" ");
             const glyph = space === -1 ? b.label : b.label.slice(0, space);
             const caption = space === -1 ? "" : b.label.slice(space + 1);
+            // Letra de derecha a izquierda: el último del array es "A".
+            const letter = ACTION_LETTERS[actions.length - 1 - idx];
             const capStyle = {
-              "--cap": ACTION_COLORS[idx % ACTION_COLORS.length],
+              "--cap": letter ? ACTION_COLORS[letter] : "var(--cyan)",
             } as CSSProperties;
             return (
               <div className="action-cap-wrap" key={i}>
@@ -211,7 +236,8 @@ export function TouchControls({ buttons, paused }: TouchControlsProps) {
                   aria-label={b.label}
                   {...pointerProps(i)}
                 >
-                  {glyph}
+                  <span className="action-cap-ring" aria-hidden />
+                  <span className="action-cap-letter">{letter ?? glyph}</span>
                 </button>
                 {caption && <span className="action-cap-label">{caption}</span>}
               </div>

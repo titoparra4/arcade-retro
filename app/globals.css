@@ -1232,45 +1232,69 @@ a {
     display: none;
   }
 
-  /* ── cara de la consola ── */
+  /* ── cara de la consola: chasis del gamepad MK-II ── */
   .game-console {
+    position: relative;
     display: flex;
     flex-direction: column;
     gap: 14px;
     margin-top: 12px;
-    padding: 16px 16px 14px;
-    border-radius: 20px;
-    background:
-      radial-gradient(
-        120% 90% at 50% -20%,
-        rgba(0, 245, 255, 0.1),
-        transparent 62%
-      ),
-      linear-gradient(180deg, var(--bg-3), var(--bg));
+    padding: 14px 16px 12px;
+    border-radius: 16px;
+    background: linear-gradient(180deg, #1c1c28 0%, #0c0c14 100%);
     border: 1px solid var(--line);
-    border-top: 2px solid rgba(0, 245, 255, 0.3);
     box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.05),
-      0 14px 34px -20px rgba(0, 0, 0, 0.9);
+      0 30px 80px -30px rgba(0, 245, 255, 0.4),
+      0 0 0 1px rgba(255, 255, 255, 0.02),
+      inset 0 1px 0 rgba(255, 255, 255, 0.06),
+      inset 0 -2px 0 rgba(0, 0, 0, 0.6);
+  }
+  /* Doble borde interior cian. */
+  .game-console::before {
+    content: "";
+    position: absolute;
+    inset: 4px;
+    border: 1px solid rgba(0, 245, 255, 0.14);
+    border-radius: 12px;
+    pointer-events: none;
+  }
+  /* Textura de puntos del chasis. */
+  .game-console::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image: radial-gradient(
+      rgba(255, 255, 255, 0.03) 1px,
+      transparent 1px
+    );
+    background-size: 8px 8px;
+    border-radius: inherit;
+    pointer-events: none;
+    opacity: 0.6;
   }
 
   .gamepad {
+    position: relative;
+    z-index: 1;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 16px;
+    /* Separación mínima cruceta↔acciones: con 64px por botón es lo que deja
+       caber el mando completo dentro del chasis a 360px de ancho. */
+    gap: 8px;
+    padding: 8px 0;
   }
   /* Sin botones de acción (bloque-buster, serpentina): centrar la cruceta. */
   .gamepad--pad-only {
     justify-content: center;
   }
 
-  /* Cruceta: 4 teclas discretas en cruz, centro vacío. */
+  /* Cruceta: 4 teclas discretas en cruz, hub en el centro. */
   .dpad {
     display: grid;
-    grid-template-columns: repeat(3, 44px);
-    grid-template-rows: repeat(3, 44px);
-    gap: 5px;
+    grid-template-columns: repeat(3, 46px);
+    grid-template-rows: repeat(3, 46px);
+    gap: 3px;
     flex-shrink: 0;
   }
   .dpad-key {
@@ -1279,50 +1303,97 @@ a {
     justify-content: center;
     font-family: var(--pixel);
     font-size: 13px;
-    color: var(--ink);
-    background: linear-gradient(180deg, #20202b, #0b0b11);
-    border: 1px solid rgba(0, 245, 255, 0.35);
-    border-radius: 11px;
+    color: var(--ink-dim);
+    background: linear-gradient(180deg, #1a1a25, #0a0a12);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
     box-shadow:
-      0 2px 0 rgba(0, 0, 0, 0.6),
-      inset 0 1px 0 rgba(255, 255, 255, 0.08);
+      0 4px 0 #050507,
+      inset 0 1px 0 rgba(255, 255, 255, 0.06),
+      inset 0 -2px 4px rgba(0, 0, 0, 0.6);
     touch-action: none;
     user-select: none;
     -webkit-user-select: none;
     -webkit-tap-highlight-color: transparent;
     transition:
-      transform 60ms ease,
-      background 60ms ease,
-      box-shadow 120ms ease,
-      color 60ms ease;
+      transform 80ms ease,
+      background 140ms ease,
+      box-shadow 140ms ease,
+      border-color 140ms ease,
+      color 140ms ease;
   }
   .dpad-key:active {
-    background: linear-gradient(
-      180deg,
-      rgba(0, 245, 255, 0.35),
-      rgba(0, 150, 170, 0.2)
-    );
+    transform: translateY(3px);
+    color: var(--cyan);
+    background: linear-gradient(180deg, #08161e, #030a0e);
+    border-color: var(--cyan);
     box-shadow:
-      0 0 18px rgba(0, 245, 255, 0.5),
-      inset 0 0 0 1px rgba(0, 245, 255, 0.5);
-    transform: translateY(1px) scale(0.95);
-    color: #eafeff;
+      0 1px 0 #050507,
+      inset 0 0 16px rgba(0, 245, 255, 0.45),
+      0 0 16px rgba(0, 245, 255, 0.5);
   }
+  /* La flecha nunca captura el puntero: el pointerup debe llegar al <button>. */
+  .dpad-arrow {
+    width: 22px;
+    height: 22px;
+    pointer-events: none;
+    transition: filter 140ms ease;
+  }
+  .dpad-key:active .dpad-arrow {
+    filter: drop-shadow(0 0 6px var(--cyan)) drop-shadow(0 0 12px var(--cyan));
+  }
+  /* Hub central: bisel oscuro con la gema (LED) del asset. */
+  .dpad-hub {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: radial-gradient(circle at 50% 50%, #181822 0%, #08080d 80%);
+    border: 1px solid rgba(0, 245, 255, 0.15);
+    border-radius: 6px;
+    box-shadow:
+      inset 0 0 12px rgba(0, 0, 0, 0.8),
+      inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    pointer-events: none;
+  }
+  .dpad-hub-gem {
+    width: 12px;
+    height: 12px;
+    background: var(--cyan);
+    box-shadow:
+      0 0 10px var(--cyan),
+      inset 0 0 4px rgba(0, 0, 0, 0.5);
+    clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+    animation: pulse-led 2s ease-in-out infinite;
+  }
+  @keyframes pulse-led {
+    50% {
+      opacity: 0.35;
+      transform: scale(0.85);
+    }
+  }
+  /* Sin animación cuando el usuario pide movimiento reducido. */
+  @media (prefers-reduced-motion: reduce) {
+    .dpad-hub-gem {
+      animation: none;
+    }
+  }
+
   /* Dirección no usada por el juego: atenuada e inerte, para mantener la cruz. */
   .dpad-key--off {
     opacity: 0.25;
     background: linear-gradient(180deg, #16161e, #0b0b11);
     border-color: var(--line);
-    box-shadow: none;
+    /* Conserva el relieve para que la cruz no se descuadre, sin brillo interior. */
+    box-shadow: 0 4px 0 #050507;
     color: var(--ink-faint);
     pointer-events: none;
   }
 
-  /* Botones de acción redondos (neón): ícono grande + caption debajo. */
+  /* Botones de acción A/B (asset MK-II): esfera neón + caption debajo. */
   .gamepad-actions {
     display: flex;
     align-items: flex-start;
-    gap: 14px;
+    gap: 12px;
     flex-shrink: 0;
   }
   .action-cap-wrap {
@@ -1332,40 +1403,75 @@ a {
     gap: 6px;
   }
   .action-cap {
-    width: 56px;
-    height: 56px;
+    /* Tonos derivados de --cap para que C/D funcionen sin reglas nuevas. */
+    --cap-mid: color-mix(in srgb, var(--cap) 70%, transparent);
+    --cap-deep: color-mix(in srgb, var(--cap) 38%, #000);
+    --cap-glow: color-mix(in srgb, var(--cap) 40%, transparent);
+    position: relative;
+    width: 64px;
+    height: 64px;
     border-radius: 50%;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    font-family: var(--pixel);
-    font-size: 15px;
     color: var(--cap);
-    background: linear-gradient(180deg, #1b1b25, #0a0a11);
-    border: 1.5px solid var(--cap);
+    border: 2px solid currentColor;
+    background:
+      radial-gradient(
+        circle at 32% 26%,
+        rgba(255, 255, 255, 0.25),
+        transparent 50%
+      ),
+      radial-gradient(circle at 50% 55%, var(--cap-mid), var(--cap-deep) 75%);
     box-shadow:
-      0 3px 0 rgba(0, 0, 0, 0.6),
-      0 0 16px -3px var(--cap),
-      inset 0 1px 0 rgba(255, 255, 255, 0.07);
-    text-shadow: 0 0 8px var(--cap);
+      0 6px 0 #050507,
+      0 0 22px var(--cap-glow),
+      inset 0 1px 0 rgba(255, 255, 255, 0.18),
+      inset 0 -4px 8px rgba(0, 0, 0, 0.4);
     touch-action: none;
     user-select: none;
     -webkit-user-select: none;
     -webkit-tap-highlight-color: transparent;
     transition:
-      transform 60ms ease,
-      box-shadow 120ms ease,
-      background 60ms ease,
-      color 60ms ease;
+      transform 80ms ease,
+      box-shadow 140ms ease;
   }
   .action-cap:active {
-    background: linear-gradient(180deg, var(--cap), rgba(0, 0, 0, 0.35));
-    color: #05050a;
-    text-shadow: none;
-    transform: translateY(2px) scale(0.95);
+    transform: translateY(4px) scale(0.97);
     box-shadow:
-      0 0 22px var(--cap),
-      inset 0 2px 6px rgba(0, 0, 0, 0.4);
+      0 1px 0 #050507,
+      0 0 36px var(--cap-glow),
+      inset 0 0 18px rgba(0, 0, 0, 0.5);
+  }
+  /* Anillo punteado: invisible en reposo, aparece y crece al pulsar. */
+  .action-cap-ring {
+    position: absolute;
+    inset: -8px;
+    border-radius: 50%;
+    border: 1px dashed currentColor;
+    opacity: 0;
+    pointer-events: none;
+    transition:
+      opacity 140ms ease,
+      transform 200ms ease;
+  }
+  .action-cap:active .action-cap-ring {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+  /* La letra nunca captura el puntero: el pointerup debe llegar al <button>. */
+  .action-cap-letter {
+    position: relative;
+    z-index: 2;
+    font-family: var(--pixel);
+    font-size: 20px;
+    color: #fff;
+    letter-spacing: 0.02em;
+    text-shadow:
+      0 0 8px var(--cap),
+      0 0 18px var(--cap),
+      0 1px 0 rgba(0, 0, 0, 0.6);
+    pointer-events: none;
   }
   .action-cap-label {
     font-family: var(--pixel);
@@ -1377,6 +1483,8 @@ a {
 
   /* Barra inferior: PAUSA ancho + selector de skin. */
   .game-console-bar {
+    position: relative;
+    z-index: 1;
     display: flex;
     align-items: center;
     gap: 12px;
