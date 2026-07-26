@@ -268,17 +268,17 @@ function drawBlockAtPixel(
   ctx.globalAlpha = 1;
 }
 
-function drawBlock(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  colorIndex: Cell,
-  size: number,
-  style: SkinStyle,
-  alpha = 1,
-) {
-  drawBlockAtPixel(ctx, x * size, y * size, colorIndex, size, style, alpha);
-}
+type Skin = "neon" | "clasico";
+
+const SKIN_STYLES: Record<Skin, SkinStyle> = {
+  neon: "outline",
+  clasico: "solid",
+};
+
+const SKIN_OPTIONS: { value: Skin; label: string }[] = [
+  { value: "neon", label: "Neón" },
+  { value: "clasico", label: "Clásico" },
+];
 
 function drawGrid(ctx: CanvasRenderingContext2D) {
   ctx.strokeStyle = "rgba(255,255,255,0.05)";
@@ -323,52 +323,194 @@ function drawNextCanvas(
       );
 }
 
-function draw(ctx: CanvasRenderingContext2D, data: GameData, style: SkinStyle) {
-  ctx.fillStyle = "#000";
-  ctx.fillRect(0, 0, W, H);
-  drawGrid(ctx);
+// ── Caché de rasterizado ────────────────────────────────────────────────────
+// Dos costes que el tablero pagaba en cada frame y no dependían del estado:
+//   1. El fondo (negro + las 28 líneas de la rejilla) nunca cambia → se pinta
+//      una vez en un canvas offscreen y el frame solo lo estampa.
+//   2. Con el skin "neon" cada bloque hacía save() + shadowBlur + restore(); con
+//      el tablero cargado eso son >100 shadowBlur por frame. El glow se hornea
+//      una vez por color en un bitmap y el frame solo hace drawImage.
+// La caché recuerda con qué skin se generó: si no coincide con el activo, se
+// reconstruye entera (fondo y sprites) antes de dibujar nada.
 
+// Un sprite por color de pieza, más su versión fantasma (la guía de caída, que
+// se dibuja al 20 % de opacidad). El alpha va horneado en el bitmap: componer
+// primero y atenuar después no da el mismo resultado que atenuar cada primitiva,
+// y el "over" de canvas es asociativo, así que estampar el sprite ya atenuado sí
+// es idéntico al dibujo original.
+type SpriteKey = `block:${Cell}` | `ghost:${Cell}`;
+
+const GHOST_ALPHA = 0.2;
+
+// El bloom se sale de la caja del bloque, así que el bitmap lleva margen por los
+// cuatro lados. El shadowBlur máximo de los skins es 8.
+const SPRITE_PAD = 12;
+
+// Rasteriza un bloque en su propio canvas. Dentro del sprite se dibuja en
+// (SPRITE_PAD, SPRITE_PAD), así que drawBlockAtPixel se reutiliza tal cual, sin
+// tocar su geometría: el aspecto queda idéntico por construcción.
+function makeBlockSprite(
+  colorIndex: Cell,
+  style: SkinStyle,
+  alpha: number,
+): HTMLCanvasElement {
+  const canvas = document.createElement("canvas");
+  canvas.width = BLOCK + SPRITE_PAD * 2;
+  canvas.height = BLOCK + SPRITE_PAD * 2;
+  const ctx = canvas.getContext("2d");
+  if (ctx)
+    drawBlockAtPixel(
+      ctx,
+      SPRITE_PAD,
+      SPRITE_PAD,
+      colorIndex,
+      BLOCK,
+      style,
+      alpha,
+    );
+  return canvas;
+}
+
+// El sprite se estampa desplazado por el padding, de forma que el bloque cae
+// justo donde lo dibujaba el render antiguo. Si el margen se sale del canvas,
+// drawImage recorta solo: el glow que se salía ya se perdía igual.
+function stamp(
+  ctx: CanvasRenderingContext2D,
+  sprite: HTMLCanvasElement,
+  col: number,
+  row: number,
+) {
+  ctx.drawImage(sprite, col * BLOCK - SPRITE_PAD, row * BLOCK - SPRITE_PAD);
+}
+
+interface RenderCache {
+  skin: Skin; // skin con el que se generó; si no coincide, se reconstruye
+  bg: HTMLCanvasElement; // fondo estático completo, W × H
+  sprites: Map<SpriteKey, HTMLCanvasElement>;
+  nextKey: string; // pieza ya pintada en el canvas "Next"; "" = ninguna
+}
+
+function buildRenderCache(skin: Skin): RenderCache {
+  const style = SKIN_STYLES[skin];
+
+  const bg = document.createElement("canvas");
+  bg.width = W;
+  bg.height = H;
+  // El fondo cubre el tablero entero, así que el offscreen tampoco necesita alfa.
+  const bgCtx = bg.getContext("2d", { alpha: false });
+  if (bgCtx) {
+    bgCtx.fillStyle = "#000";
+    bgCtx.fillRect(0, 0, W, H);
+    drawGrid(bgCtx);
+  }
+
+  const sprites = new Map<SpriteKey, HTMLCanvasElement>();
+  for (let i = 1; i < COLORS.length; i++) {
+    const type = i as Cell;
+    sprites.set(`block:${type}`, makeBlockSprite(type, style, 1));
+    sprites.set(`ghost:${type}`, makeBlockSprite(type, style, GHOST_ALPHA));
+  }
+
+  return { skin, bg, sprites, nextKey: "" };
+}
+
+function draw(
+  ctx: CanvasRenderingContext2D,
+  data: GameData,
+  cache: RenderCache,
+) {
+  ctx.drawImage(cache.bg, 0, 0);
+
+  // Mismo orden que el render original —tablero, fantasma, pieza actual—, para
+  // que los glows se solapen exactamente igual.
   for (let r = 0; r < ROWS; r++)
-    for (let c = 0; c < COLS; c++)
-      drawBlock(ctx, c, r, data.board[r][c], BLOCK, style);
+    for (let c = 0; c < COLS; c++) {
+      const cell = data.board[r][c];
+      if (cell) stamp(ctx, cache.sprites.get(`block:${cell}`)!, c, r);
+    }
 
   const gy = ghostY(data);
   for (let r = 0; r < data.current.shape.length; r++)
-    for (let c = 0; c < data.current.shape[r].length; c++)
-      if (data.current.shape[r][c])
-        drawBlock(
+    for (let c = 0; c < data.current.shape[r].length; c++) {
+      const cell = data.current.shape[r][c];
+      if (cell)
+        stamp(
           ctx,
+          cache.sprites.get(`ghost:${cell}`)!,
           data.current.x + c,
           gy + r,
-          data.current.shape[r][c],
-          BLOCK,
-          style,
-          0.2,
         );
+    }
 
   for (let r = 0; r < data.current.shape.length; r++)
-    for (let c = 0; c < data.current.shape[r].length; c++)
-      drawBlock(
-        ctx,
-        data.current.x + c,
-        data.current.y + r,
-        data.current.shape[r][c],
-        BLOCK,
-        style,
-      );
+    for (let c = 0; c < data.current.shape[r].length; c++) {
+      const cell = data.current.shape[r][c];
+      if (cell)
+        stamp(
+          ctx,
+          cache.sprites.get(`block:${cell}`)!,
+          data.current.x + c,
+          data.current.y + r,
+        );
+    }
 }
 
-type Skin = "neon" | "clasico";
+// ── Medidor de FPS (herramienta de desarrollo) ──────────────────────────────
+// Solo se instancia si la URL trae ?fps=1, leído una vez al montar. Buffer
+// circular con la duración de los últimos 120 frames (≈2 s); de ahí salen el
+// instantáneo, la mediana y el mínimo. Se dibuja dentro del canvas: un <div>
+// superpuesto refrescándose 60 veces por segundo sería justo el coste que este
+// trabajo ataca.
+const FPS_WINDOW = 120;
 
-const SKIN_STYLES: Record<Skin, SkinStyle> = {
-  neon: "outline",
-  clasico: "solid",
-};
+interface FpsMeter {
+  durations: number[]; // ms del frame, longitud fija FPS_WINDOW
+  index: number;
+  count: number; // frames acumulados, tope FPS_WINDOW
+}
 
-const SKIN_OPTIONS: { value: Skin; label: string }[] = [
-  { value: "neon", label: "Neón" },
-  { value: "clasico", label: "Clásico" },
-];
+function createFpsMeter(): FpsMeter {
+  return {
+    durations: new Array<number>(FPS_WINDOW).fill(0),
+    index: 0,
+    count: 0,
+  };
+}
+
+function pushFrameTime(meter: FpsMeter, ms: number) {
+  if (ms <= 0) return;
+  meter.durations[meter.index] = ms;
+  meter.index = (meter.index + 1) % FPS_WINDOW;
+  if (meter.count < FPS_WINDOW) meter.count += 1;
+}
+
+// Scratch reutilizado: ordenar la ventana sin asignar un array por frame.
+const fpsScratch = new Float64Array(FPS_WINDOW);
+const msToFps = (ms: number) => Math.round(1000 / ms);
+
+function drawFpsMeter(ctx: CanvasRenderingContext2D, meter: FpsMeter) {
+  if (meter.count === 0) return;
+  for (let i = 0; i < meter.count; i++) fpsScratch[i] = meter.durations[i];
+  const sorted = fpsScratch.subarray(0, meter.count);
+  sorted.sort();
+  // El frame más largo de la ventana son los FPS mínimos.
+  const text = `${msToFps(
+    meter.durations[(meter.index + FPS_WINDOW - 1) % FPS_WINDOW],
+  )} fps · med ${msToFps(sorted[meter.count >> 1])} · mín ${msToFps(
+    sorted[meter.count - 1],
+  )}`;
+
+  ctx.save();
+  ctx.font = "700 12px ui-monospace, monospace";
+  ctx.textAlign = "left";
+  ctx.textBaseline = "middle";
+  const w = ctx.measureText(text).width;
+  ctx.fillStyle = "rgba(0,0,0,0.72)";
+  ctx.fillRect(4, H - 24, w + 12, 20);
+  ctx.fillStyle = "#4dd0e1";
+  ctx.fillText(text, 10, H - 14);
+  ctx.restore();
+}
 
 export type CaidaGameProps = GameComponentProps;
 export type CaidaGameHandle = GameComponentHandle;
@@ -397,6 +539,9 @@ export const CaidaGame = forwardRef<CaidaGameHandle, CaidaGameProps>(
     const [skin, setSkin] = useState<Skin>("neon");
     const skinRef = useRef<Skin>(skin);
     skinRef.current = skin;
+    // Bitmaps pre-renderizados. Se construye en el primer frame (ya en cliente)
+    // y se reemplaza entero en cuanto el skin deja de coincidir.
+    const cacheRef = useRef<RenderCache | null>(null);
     const callbacksRef = useRef({
       onScoreChange,
       onLivesChange,
@@ -437,12 +582,22 @@ export const CaidaGame = forwardRef<CaidaGameHandle, CaidaGameProps>(
     useEffect(() => {
       const canvas = canvasRef.current;
       if (!canvas) return;
-      const ctx = canvas.getContext("2d");
+      // Sin capa alfa: el tablero repinta el 100 % de su canvas cada frame, así
+      // que la transparencia solo añadiría trabajo de composición. El canvas de
+      // "Next" sí la necesita: se ve el fondo de .tetris-next por detrás.
+      const ctx = canvas.getContext("2d", { alpha: false });
       if (!ctx) return;
       const nextCtx = nextCanvasRef.current?.getContext("2d") ?? null;
 
       canvas.focus();
       callbacksRef.current.onLivesChange(1);
+
+      // Herramienta de desarrollo: se lee una sola vez al montar. Sin el query
+      // param no se instancia nada y el juego no paga ningún coste.
+      const fpsMeter =
+        new URLSearchParams(window.location.search).get("fps") === "1"
+          ? createFpsMeter()
+          : null;
 
       function handleKeyDown(e: KeyboardEvent) {
         if (CONTROL_CODES.has(e.code)) e.preventDefault();
@@ -507,7 +662,10 @@ export const CaidaGame = forwardRef<CaidaGameHandle, CaidaGameProps>(
       let wasGameOver = false;
 
       function loop(ts: number) {
-        const dt = lastTime === null ? 0 : Math.min(ts - lastTime, 50);
+        const elapsed = lastTime === null ? 0 : ts - lastTime;
+        // El motor recorta el paso a 50 ms para que un frame perdido no
+        // acelere la caída; el medidor mide el frame real, sin recortar.
+        const dt = Math.min(elapsed, 50);
         lastTime = ts;
 
         const data = dataRef.current;
@@ -530,9 +688,29 @@ export const CaidaGame = forwardRef<CaidaGameHandle, CaidaGameProps>(
           }
         }
 
-        const style = SKIN_STYLES[skinRef.current];
-        draw(ctx!, data, style);
-        if (nextCtx) drawNextCanvas(nextCtx, data.next, style);
+        // En pausa se congela el dibujo: el canvas conserva el último frame y el
+        // overlay "EN PAUSA" del player va encima. El primer frame tras reanudar
+        // vuelve a pintarlo todo. El medidor solo cuenta frames que dibujan.
+        if (!pausedRef.current) {
+          if (fpsMeter) pushFrameTime(fpsMeter, elapsed);
+          const activeSkin = skinRef.current;
+          // Cambiar de skin en caliente invalida la caché entera: se regenera en
+          // este mismo frame, antes de dibujar nada con el estilo nuevo.
+          let cache = cacheRef.current;
+          if (!cache || cache.skin !== activeSkin) {
+            cache = buildRenderCache(activeSkin);
+            cacheRef.current = cache;
+          }
+          draw(ctx!, data, cache);
+          // La vista previa solo cambia al bloquear una pieza (o al cambiar de
+          // skin): repintarla 60 veces por segundo era trabajo tirado.
+          const nextKey = `${data.next.type}:${activeSkin}`;
+          if (nextCtx && cache.nextKey !== nextKey) {
+            cache.nextKey = nextKey;
+            drawNextCanvas(nextCtx, data.next, SKIN_STYLES[activeSkin]);
+          }
+          if (fpsMeter) drawFpsMeter(ctx!, fpsMeter);
+        }
         reportChanges();
 
         if (data.state === "gameover") {
