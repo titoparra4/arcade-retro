@@ -644,32 +644,48 @@ function drawZones(ctx: CanvasRenderingContext2D, pal: Palette) {
   }
 }
 
+// Una boca destino, vacía u ocupada. `y` es el borde superior de su fila: la
+// boca no ocupa la celda entera, deja sitio arriba a la franja del HUD y abajo
+// a la barra de tiempo.
+function paintGoal(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  filled: boolean,
+  pal: Palette,
+) {
+  const top = y + HUD_BAND_H;
+  const h = CELL - HUD_BAND_H - TIME_BAR_H;
+  const w = GOAL_WIDTH * CELL;
+  ctx.fillStyle = pal.goalMouth;
+  ctx.fillRect(x, top, w, h);
+  ctx.strokeStyle = pal.goalBorder;
+  ctx.lineWidth = 2;
+  withGlow(ctx, pal, pal.goalBorder, () =>
+    ctx.strokeRect(x + 1, top + 1, w - 2, h - 2),
+  );
+  if (filled) {
+    // Silueta de rana en la boca ya ocupada.
+    ctx.fillStyle = pal.goalFilled;
+    ctx.beginPath();
+    ctx.ellipse(x + w / 2, top + h / 2, 12, 8, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillRect(x + w / 2 - 13, top + h / 2 - 7, 5, 4);
+    ctx.fillRect(x + w / 2 + 8, top + h / 2 - 7, 5, 4);
+  }
+}
+
+// Las 5 bocas solo tienen dos aspectos posibles, así que son 2 bitmaps
+// estampados 5 veces en vez de 5 strokeRect con shadowBlur por frame.
 function drawGoals(
   ctx: CanvasRenderingContext2D,
   goals: boolean[],
-  pal: Palette,
+  cache: RenderCache,
 ) {
-  const top = ROW_GOALS * CELL + HUD_BAND_H;
-  const h = CELL - HUD_BAND_H - TIME_BAR_H;
+  const y = ROW_GOALS * CELL;
   GOAL_COLS.forEach((col, i) => {
-    const x = col * CELL;
-    const w = GOAL_WIDTH * CELL;
-    ctx.fillStyle = pal.goalMouth;
-    ctx.fillRect(x, top, w, h);
-    ctx.strokeStyle = pal.goalBorder;
-    ctx.lineWidth = 2;
-    withGlow(ctx, pal, pal.goalBorder, () =>
-      ctx.strokeRect(x + 1, top + 1, w - 2, h - 2),
-    );
-    if (goals[i]) {
-      // Silueta de rana en la boca ya ocupada.
-      ctx.fillStyle = pal.goalFilled;
-      ctx.beginPath();
-      ctx.ellipse(x + w / 2, top + h / 2, 12, 8, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillRect(x + w / 2 - 13, top + h / 2 - 7, 5, 4);
-      ctx.fillRect(x + w / 2 + 8, top + h / 2 - 7, 5, 4);
-    }
+    const sprite = cache.sprites.get(goals[i] ? "goal-filled" : "goal")!;
+    stamp(ctx, sprite, col * CELL, y);
   });
 }
 
@@ -793,28 +809,94 @@ function drawTurtles(
   }
 }
 
+// ── Sprites pre-renderizados ────────────────────────────────────────────────
+// El glow se hornea una vez en el bitmap de cada entidad y el frame solo hace
+// drawImage: `shadowBlur` deja de pagarse ~33 veces por frame.
+type SpriteKey =
+  | `car:${number}` // variante de color
+  | `truck:${number}` // ancho en columnas
+  | `log:${number}` // ancho en columnas
+  | "turtle"
+  | "turtle-sub"
+  | "frog"
+  | "frog-jump"
+  | "goal" // boca destino vacía
+  | "goal-filled"; // boca destino ya ocupada
+
+// El bloom se sale de la caja de la entidad, así que el bitmap lleva margen por
+// los cuatro lados. El `glow` máximo de las tres paletas es 10.
+const SPRITE_PAD = 12;
+
+// Los anchos que hay que cachear salen de los propios blueprints: si un carril
+// cambia de ancho, su sprite aparece solo.
+const widthsOf = (type: Entity["type"]) => [
+  ...new Set(
+    LANE_BLUEPRINTS.filter((bp) => bp.type === type).map((bp) => bp.width),
+  ),
+];
+const TRUCK_WIDTHS = widthsOf("truck");
+const LOG_WIDTHS = widthsOf("log");
+
+// Rasteriza una entidad en su propio canvas. Dentro del sprite se dibuja en
+// (SPRITE_PAD, SPRITE_PAD), así que las funciones de dibujo se reutilizan tal
+// cual, sin tocar su geometría.
+function makeSprite(
+  widthCols: number,
+  paint: (ctx: CanvasRenderingContext2D, x: number, y: number) => void,
+): HTMLCanvasElement {
+  const canvas = document.createElement("canvas");
+  canvas.width = widthCols * CELL + SPRITE_PAD * 2;
+  canvas.height = CELL + SPRITE_PAD * 2;
+  const ctx = canvas.getContext("2d");
+  if (ctx) paint(ctx, SPRITE_PAD, SPRITE_PAD);
+  return canvas;
+}
+
+// El sprite se estampa desplazado por el padding, de forma que la entidad cae
+// justo donde la dibujaba el render antiguo. Si el margen se sale del canvas,
+// drawImage recorta solo: el glow que se salía ya se perdía igual.
+function stamp(
+  ctx: CanvasRenderingContext2D,
+  sprite: HTMLCanvasElement,
+  x: number,
+  y: number,
+) {
+  ctx.drawImage(sprite, x - SPRITE_PAD, y - SPRITE_PAD);
+}
+
 function drawEntities(
   ctx: CanvasRenderingContext2D,
   lanes: Lane[],
   pal: Palette,
+  cache: RenderCache,
 ) {
   for (const lane of lanes) {
     const y = lane.row * CELL;
     for (const entity of lane.entities) {
       const x = entity.col * CELL;
       switch (entity.type) {
-        case "car":
-          drawCar(ctx, x, y, entity.variant ?? 0, pal);
+        case "car": {
+          // Mismo módulo que usa drawCar para elegir el color de la carrocería.
+          const v = (entity.variant ?? 0) % pal.carBodies.length;
+          stamp(ctx, cache.sprites.get(`car:${v}`)!, x, y);
           break;
+        }
         case "truck":
-          drawTruck(ctx, x, y, entity.width, pal);
+          stamp(ctx, cache.sprites.get(`truck:${entity.width}`)!, x, y);
           break;
         case "log":
-          drawLog(ctx, x, y, entity.width, pal);
+          stamp(ctx, cache.sprites.get(`log:${entity.width}`)!, x, y);
           break;
-        case "turtle":
-          drawTurtles(ctx, x, y, entity.width, entity.submerged === true, pal);
+        case "turtle": {
+          // La tortuga se cachea por celda: los grupos son de ancho 2 y 3 pero
+          // el bitmap es el mismo, así que un grupo de 3 hace 3 drawImage.
+          const key = entity.submerged === true ? "turtle-sub" : "turtle";
+          const sprite = cache.sprites.get(key)!;
+          for (let i = 0; i < entity.width; i++) {
+            stamp(ctx, sprite, x + i * CELL, y);
+          }
           break;
+        }
       }
     }
   }
@@ -827,28 +909,25 @@ const FACING_ANGLE: Record<Direction, number> = {
   left: -Math.PI / 2,
 };
 
-function drawFrog(ctx: CanvasRenderingContext2D, frog: Frog, pal: Palette) {
-  // Interpolación del salto: la rana se desplaza entre celdas en JUMP_MS.
-  const t = frog.animating ? Math.min(1, frog.animT / JUMP_MS) : 1;
-  const col = frog.animating
-    ? frog.fromCol + (frog.targetCol - frog.fromCol) * t
-    : frog.col;
-  const row = frog.animating
-    ? frog.fromRow + (frog.targetRow - frog.fromRow) * t
-    : frog.row;
-  const cx = col * CELL + CELL / 2;
-  const cy = row * CELL + CELL / 2;
-  // Pequeño "hop": la rana crece a mitad del salto.
-  const hop = frog.animating ? 1 + Math.sin(Math.PI * t) * 0.18 : 1;
+// Cuánto sobresalen las patas: recogidas cuando está posada, extendidas
+// mientras salta. Son las dos poses que se cachean.
+const LEG_REST = 2;
+const LEG_JUMP = 5;
 
+// La rana mirando hacia arriba, centrada en (cx, cy). El sprite se genera con
+// esta función; la orientación y el "hop" los aplica el frame con rotate/scale.
+function paintFrog(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  legOut: number,
+  pal: Palette,
+) {
   ctx.save();
   ctx.translate(cx, cy);
-  ctx.rotate(FACING_ANGLE[frog.facing]);
-  ctx.scale(hop, hop);
 
-  // Patas extendidas durante el salto
+  // Patas
   ctx.fillStyle = pal.frogDark;
-  const legOut = frog.animating ? 5 : 2;
   ctx.fillRect(-15 - legOut, -8, 8, 5);
   ctx.fillRect(7 + legOut, -8, 8, 5);
   ctx.fillRect(-15 - legOut, 4, 8, 5);
@@ -873,6 +952,35 @@ function drawFrog(ctx: CanvasRenderingContext2D, frog: Frog, pal: Palette) {
   ctx.arc(-6, -8, 2, 0, Math.PI * 2);
   ctx.arc(6, -8, 2, 0, Math.PI * 2);
   ctx.fill();
+  ctx.restore();
+}
+
+function drawFrog(
+  ctx: CanvasRenderingContext2D,
+  frog: Frog,
+  cache: RenderCache,
+) {
+  // Interpolación del salto: la rana se desplaza entre celdas en JUMP_MS.
+  const t = frog.animating ? Math.min(1, frog.animT / JUMP_MS) : 1;
+  const col = frog.animating
+    ? frog.fromCol + (frog.targetCol - frog.fromCol) * t
+    : frog.col;
+  const row = frog.animating
+    ? frog.fromRow + (frog.targetRow - frog.fromRow) * t
+    : frog.row;
+  const cx = col * CELL + CELL / 2;
+  const cy = row * CELL + CELL / 2;
+  // Pequeño "hop": la rana crece a mitad del salto.
+  const hop = frog.animating ? 1 + Math.sin(Math.PI * t) * 0.18 : 1;
+
+  // Dos poses × cuatro orientaciones serían 8 bitmaps para ahorrar un rotate()
+  // que el código ya hacía: se cachea la pose y se gira en el frame.
+  const sprite = cache.sprites.get(frog.animating ? "frog-jump" : "frog")!;
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(FACING_ANGLE[frog.facing]);
+  ctx.scale(hop, hop);
+  ctx.drawImage(sprite, -sprite.width / 2, -sprite.height / 2);
   ctx.restore();
 }
 
@@ -914,12 +1022,144 @@ function drawHud(ctx: CanvasRenderingContext2D, data: GameData, pal: Palette) {
   ctx.fillRect(0, y, CANVAS_W * ratio, TIME_BAR_H);
 }
 
-function draw(ctx: CanvasRenderingContext2D, data: GameData, pal: Palette) {
-  drawZones(ctx, pal);
-  drawEntities(ctx, data.lanes, pal);
-  drawGoals(ctx, data.goals, pal);
-  drawFrog(ctx, data.frog, pal);
+// ── Caché de rasterizado ────────────────────────────────────────────────────
+// El fondo estático —río, asfalto, franjas seguras, ondas y las 5 × 16 rayas
+// viales— no cambia entre frames, así que se pinta una vez en un canvas
+// offscreen y el frame solo lo estampa. La caché recuerda con qué skin se
+// generó: si no coincide con el activo, se reconstruye entera.
+interface RenderCache {
+  skin: SkinId;
+  bg: HTMLCanvasElement; // fondo estático completo, CANVAS_W × CANVAS_H
+  sprites: Map<SpriteKey, HTMLCanvasElement>;
+}
+
+function buildRenderCache(skin: SkinId): RenderCache {
+  const pal = SKIN_PALETTES[skin];
+
+  const bg = document.createElement("canvas");
+  bg.width = CANVAS_W;
+  bg.height = CANVAS_H;
+  // drawZones cubre las 14 filas, así que el offscreen tampoco necesita alfa.
+  const bgCtx = bg.getContext("2d", { alpha: false });
+  if (bgCtx) drawZones(bgCtx, pal);
+
+  const sprites = new Map<SpriteKey, HTMLCanvasElement>();
+  pal.carBodies.forEach((_, v) => {
+    sprites.set(
+      `car:${v}`,
+      makeSprite(1, (c, x, y) => drawCar(c, x, y, v, pal)),
+    );
+  });
+  for (const w of TRUCK_WIDTHS) {
+    sprites.set(
+      `truck:${w}`,
+      makeSprite(w, (c, x, y) => drawTruck(c, x, y, w, pal)),
+    );
+  }
+  for (const w of LOG_WIDTHS) {
+    sprites.set(
+      `log:${w}`,
+      makeSprite(w, (c, x, y) => drawLog(c, x, y, w, pal)),
+    );
+  }
+  // Una sola celda: drawTurtles pinta `width` tortugas idénticas en fila.
+  sprites.set(
+    "turtle",
+    makeSprite(1, (c, x, y) => drawTurtles(c, x, y, 1, false, pal)),
+  );
+  sprites.set(
+    "turtle-sub",
+    makeSprite(1, (c, x, y) => drawTurtles(c, x, y, 1, true, pal)),
+  );
+  // La rana se pinta centrada en la celda: el frame la rota alrededor de ese
+  // mismo centro, así que el bitmap tiene que tenerlo en su punto medio.
+  const frogPose = (legOut: number) =>
+    makeSprite(1, (c, x, y) =>
+      paintFrog(c, x + CELL / 2, y + CELL / 2, legOut, pal),
+    );
+  sprites.set("frog", frogPose(LEG_REST));
+  sprites.set("frog-jump", frogPose(LEG_JUMP));
+  sprites.set(
+    "goal",
+    makeSprite(GOAL_WIDTH, (c, x, y) => paintGoal(c, x, y, false, pal)),
+  );
+  sprites.set(
+    "goal-filled",
+    makeSprite(GOAL_WIDTH, (c, x, y) => paintGoal(c, x, y, true, pal)),
+  );
+
+  return { skin, bg, sprites };
+}
+
+function draw(
+  ctx: CanvasRenderingContext2D,
+  data: GameData,
+  pal: Palette,
+  cache: RenderCache,
+) {
+  ctx.drawImage(cache.bg, 0, 0);
+  drawEntities(ctx, data.lanes, pal, cache);
+  drawGoals(ctx, data.goals, cache);
+  drawFrog(ctx, data.frog, cache);
   drawHud(ctx, data, pal);
+}
+
+// ── Medidor de FPS (herramienta de desarrollo) ──────────────────────────────
+// Solo se instancia si la URL trae ?fps=1. Buffer circular con la duración de
+// los últimos 120 frames (≈2 s); de ahí salen el instantáneo, la mediana y el
+// mínimo. Se dibuja dentro del canvas: un <div> superpuesto refrescándose 60
+// veces por segundo sería justo el coste que este spec ataca.
+const FPS_WINDOW = 120;
+
+interface FpsMeter {
+  durations: number[]; // ms del frame, longitud fija FPS_WINDOW
+  index: number;
+  count: number; // frames acumulados, tope FPS_WINDOW
+}
+
+function createFpsMeter(): FpsMeter {
+  return {
+    durations: new Array<number>(FPS_WINDOW).fill(0),
+    index: 0,
+    count: 0,
+  };
+}
+
+function pushFrameTime(meter: FpsMeter, ms: number) {
+  if (ms <= 0) return;
+  meter.durations[meter.index] = ms;
+  meter.index = (meter.index + 1) % FPS_WINDOW;
+  if (meter.count < FPS_WINDOW) meter.count += 1;
+}
+
+// Scratch reutilizado: ordenar la ventana sin asignar un array por frame.
+const fpsScratch = new Float64Array(FPS_WINDOW);
+const msToFps = (ms: number) => Math.round(1000 / ms);
+
+function drawFpsMeter(
+  ctx: CanvasRenderingContext2D,
+  meter: FpsMeter,
+  pal: Palette,
+) {
+  if (meter.count === 0) return;
+  for (let i = 0; i < meter.count; i++) fpsScratch[i] = meter.durations[i];
+  const sorted = fpsScratch.subarray(0, meter.count);
+  sorted.sort();
+  // El frame más largo de la ventana son los FPS mínimos.
+  const text = `${msToFps(
+    meter.durations[(meter.index + FPS_WINDOW - 1) % FPS_WINDOW],
+  )} fps · med ${msToFps(sorted[meter.count >> 1])} · mín ${msToFps(
+    sorted[meter.count - 1],
+  )}`;
+
+  ctx.font = "700 12px ui-monospace, monospace";
+  ctx.textAlign = "left";
+  ctx.textBaseline = "middle";
+  const w = ctx.measureText(text).width;
+  ctx.fillStyle = pal.hudBand;
+  ctx.fillRect(4, CANVAS_H - 24, w + 12, 20);
+  ctx.fillStyle = pal.hud;
+  ctx.fillText(text, 10, CANVAS_H - 14);
 }
 
 export type RanariaGameProps = GameComponentProps;
@@ -929,7 +1169,7 @@ interface ReportedState {
   score: number;
   lives: number;
   level: number;
-  time: number; // temporizador de ronda, con 1 decimal (stat extra del HUD)
+  time: number; // temporizador de ronda, en segundos enteros (stat extra del HUD)
 }
 
 export const RanariaGame = forwardRef<RanariaGameHandle, RanariaGameProps>(
@@ -951,6 +1191,9 @@ export const RanariaGame = forwardRef<RanariaGameHandle, RanariaGameProps>(
     // skinRef: el loop de canvas lee el skin activo sin re-suscribir el efecto.
     const skinRef = useRef<SkinId>(skin);
     skinRef.current = skin;
+    // Bitmaps pre-renderizados. Se construye en el primer frame (ya en cliente)
+    // y se reemplaza entero en cuanto el skin deja de coincidir.
+    const cacheRef = useRef<RenderCache | null>(null);
     const callbacksRef = useRef({
       onScoreChange,
       onLivesChange,
@@ -1002,12 +1245,21 @@ export const RanariaGame = forwardRef<RanariaGameHandle, RanariaGameProps>(
     useEffect(() => {
       const canvas = canvasRef.current;
       if (!canvas) return;
-      const ctx = canvas.getContext("2d");
+      // Sin capa alfa: el juego repinta el 100 % del canvas cada frame, así que
+      // la transparencia solo añadiría trabajo de composición.
+      const ctx = canvas.getContext("2d", { alpha: false });
       if (!ctx) return;
 
       canvas.focus();
       callbacksRef.current.onLivesChange(START_LIVES);
       callbacksRef.current.onExtraStatChange(dataRef.current.timeLeft);
+
+      // Herramienta de desarrollo: se lee una sola vez al montar. Sin el query
+      // param no se instancia nada y el juego no paga ningún coste.
+      const fpsMeter =
+        new URLSearchParams(window.location.search).get("fps") === "1"
+          ? createFpsMeter()
+          : null;
 
       let rafId = 0;
       let lastTime: number | null = null;
@@ -1059,9 +1311,12 @@ export const RanariaGame = forwardRef<RanariaGameHandle, RanariaGameProps>(
           cb.onLevelChange(data.level);
         }
         // Stat extra del HUD de la plataforma: el reloj de la ronda. Se emite
-        // con 1 decimal (la resolución que muestra el player) para no disparar
-        // un setState por frame.
-        const time = Math.round(data.timeLeft * 10) / 10;
+        // en segundos enteros —una vez por segundo en vez de diez— porque cada
+        // llamada re-renderiza el player entero. `ceil` y no `round`: con round
+        // el HUD marcaría 0 medio segundo antes de que la rana muera por
+        // tiempo. La cuenta atrás continua vive en la barra de tiempo del
+        // canvas, que lee `data.timeLeft` sin redondear.
+        const time = Math.ceil(data.timeLeft);
         if (time !== reported.time) {
           reported.time = time;
           cb.onExtraStatChange(time);
@@ -1069,14 +1324,30 @@ export const RanariaGame = forwardRef<RanariaGameHandle, RanariaGameProps>(
       }
 
       function loop(ts: number) {
-        const dt = lastTime === null ? 0 : Math.min(ts - lastTime, 50);
+        const elapsed = lastTime === null ? 0 : ts - lastTime;
+        // El motor recorta el paso a 50 ms para que un frame perdido no
+        // teletransporte a nadie; el medidor mide el frame real, sin recortar.
+        const dt = Math.min(elapsed, 50);
         lastTime = ts;
 
         const data = dataRef.current;
-        // En pausa se congela update() pero se sigue dibujando.
-        if (!pausedRef.current) update(data, dt);
-
-        draw(ctx!, data, SKIN_PALETTES[skinRef.current]);
+        // En pausa se congela el juego entero: ni update() ni draw(). El canvas
+        // conserva el último frame y el overlay "EN PAUSA" del player va encima;
+        // el primer frame tras reanudar vuelve a pintarlo todo. El medidor solo
+        // cuenta frames que dibujan: los de la pausa no miden nada.
+        if (!pausedRef.current) {
+          update(data, dt);
+          if (fpsMeter) pushFrameTime(fpsMeter, elapsed);
+          const skin = skinRef.current;
+          // Cambiar de skin en caliente invalida la caché entera: se regenera
+          // en este mismo frame, antes de dibujar nada con la paleta nueva.
+          if (!cacheRef.current || cacheRef.current.skin !== skin) {
+            cacheRef.current = buildRenderCache(skin);
+          }
+          const pal = SKIN_PALETTES[skin];
+          draw(ctx!, data, pal, cacheRef.current);
+          if (fpsMeter) drawFpsMeter(ctx!, fpsMeter, pal);
+        }
         reportChanges();
 
         if (data.state === "gameover") {
