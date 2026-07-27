@@ -2,15 +2,24 @@
 
 import Link from "next/link";
 import { useActionState, useState } from "react";
-import { signInAction, signUpAction, type AuthFormState } from "./actions";
+import {
+  signInAction,
+  signInWithProviderAction,
+  signUpAction,
+  type AuthFormState,
+} from "./actions";
 import { AuthMessage as Message, AuthShell } from "./auth-shell";
 
 const EMPTY: AuthFormState = { error: null, notice: null };
 
-const LINK_ERROR =
-  "ESE ENLACE YA NO SIRVE. PIDE UNO NUEVO E INTÉNTALO OTRA VEZ.";
+// Errores que llegan por la URL, de vuelta de un flujo que ocurrió fuera de esta
+// pantalla.
+const ENTRY_ERRORS: Record<string, string> = {
+  enlace: "ESE ENLACE YA NO SIRVE. PIDE UNO NUEVO E INTÉNTALO OTRA VEZ.",
+  oauth: "NO PUDIMOS ENTRAR CON ESE PROVEEDOR. INTÉNTALO OTRA VEZ.",
+};
 
-export default function AuthCard({ linkError }: { linkError: boolean }) {
+export default function AuthCard({ error }: { error: string | null }) {
   const [tab, setTab] = useState<"in" | "up">("in");
 
   // Un estado por pestaña: así el error de una no aparece al cambiar a la otra.
@@ -18,6 +27,7 @@ export default function AuthCard({ linkError }: { linkError: boolean }) {
   const [signUp, signUpForm, signingUp] = useActionState(signUpAction, EMPTY);
 
   const state = tab === "in" ? signIn : signUp;
+  const entryError = error ? ENTRY_ERRORS[error] : undefined;
 
   return (
     <AuthShell subtitle="ACCESO AL SISTEMA · v2.6">
@@ -39,8 +49,8 @@ export default function AuthCard({ linkError }: { linkError: boolean }) {
           </button>
         </div>
 
-        {linkError && !state.error && !state.notice && (
-          <Message text={LINK_ERROR} tone="err" />
+        {entryError && !state.error && !state.notice && (
+          <Message text={entryError} tone="err" />
         )}
         {state.error && <Message text={state.error} tone="err" />}
         {state.notice && <Message text={state.notice} tone="ok" />}
@@ -143,14 +153,21 @@ export default function AuthCard({ linkError }: { linkError: boolean }) {
         </Link>
 
         <div className="auth-divider">O CONTINÚA CON</div>
+        {/* Un form por proveedor: la Server Action pide la URL a Supabase y
+            redirige, así que funcionan aunque el JavaScript no haya hidratado. */}
         <div className="social">
-          {/* Inertes hasta el SPEC 14 (OAuth). */}
-          <button className="btn ghost" type="button">
-            ◆ GOOGLE
-          </button>
-          <button className="btn ghost" type="button">
-            ▣ GITHUB
-          </button>
+          <form action={signInWithProviderAction}>
+            <input type="hidden" name="provider" value="google" />
+            <button className="btn ghost" type="submit">
+              ◆ GOOGLE
+            </button>
+          </form>
+          <form action={signInWithProviderAction}>
+            <input type="hidden" name="provider" value="github" />
+            <button className="btn ghost" type="submit">
+              ▣ GITHUB
+            </button>
+          </form>
         </div>
 
         <div

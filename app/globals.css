@@ -1923,6 +1923,29 @@ a {
   color: var(--ink-faint);
   letter-spacing: 0.08em;
 }
+/* Onboarding: la pantalla tiene un solo campo, así que el campo es la pantalla.
+   Se lee como el registro de iniciales de una recreativa. */
+.name-entry input {
+  height: 60px;
+  font-family: var(--pixel);
+  font-size: 18px;
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  text-indent: 0.22em; /* compensa el espacio que el último carácter deja a su derecha */
+  color: var(--cyan);
+  caret-color: var(--magenta);
+  border-color: rgba(0, 245, 255, 0.4);
+  text-shadow: 0 0 10px rgba(0, 245, 255, 0.5);
+}
+.name-entry label {
+  text-align: center;
+}
+.name-entry .field-hint {
+  text-align: center;
+  line-height: 1.6;
+}
+
 /* Respuesta del sistema: se lee como la línea de estado de la máquina, no como
    un toast. Magenta = rechazo, verde = confirmación. */
 .auth-msg {
@@ -1990,7 +2013,12 @@ a {
   grid-template-columns: 1fr 1fr;
   gap: 10px;
 }
+/* Cada proveedor va en su propio form, que es quien ocupa la columna. */
+.social form {
+  display: flex;
+}
 .social .btn {
+  width: 100%;
   padding: 12px;
   font-size: 9px;
 }

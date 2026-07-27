@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { isPlayerNameTaken } from "@/lib/supabase/profiles";
 import { createClient } from "@/lib/supabase/server";
@@ -138,6 +139,112 @@ export async function signInAction(
 
   // Los Server Components ya renderizados (nav, salón) conservarían la sesión
   // anterior sin esto.
+  revalidatePath("/", "layout");
+  redirect("/games");
+}
+
+export type OAuthProvider = "google" | "github";
+
+const OAUTH_PROVIDERS: readonly OAuthProvider[] = ["google", "github"];
+
+/**
+ * Lanza el flujo OAuth: pide a Supabase la URL del proveedor y manda ahí al
+ * jugador. La vuelta la atiende /auth/callback, que es quien canjea el ?code=.
+ *
+ * Es una Server Action y no una llamada desde el cliente para que los botones
+ * funcionen aunque el JavaScript aún no haya hidratado.
+ */
+export async function signInWithProviderAction(
+  formData: FormData,
+): Promise<void> {
+  const provider = String(formData.get("provider") ?? "") as OAuthProvider;
+
+  if (!OAUTH_PROVIDERS.includes(provider)) {
+    console.error("signInWithProviderAction: proveedor desconocido:", provider);
+    redirect("/auth?error=oauth");
+  }
+
+  // El redirectTo tiene que ser absoluto y estar en las Redirect URLs de
+  // Supabase. En este spec eso significa http://localhost:3000.
+  const headerList = await headers();
+  const origin =
+    headerList.get("origin") ??
+    `${headerList.get("x-forwarded-proto") ?? "http"}://${headerList.get("host") ?? "localhost:3000"}`;
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider,
+    options: { redirectTo: `${origin}/auth/callback` },
+  });
+
+  if (error || !data.url) {
+    console.error(
+      "signInWithProviderAction: signInWithOAuth falló:",
+      error?.message ?? "sin URL de proveedor",
+    );
+    redirect("/auth?error=oauth");
+  }
+
+  redirect(data.url);
+}
+
+/**
+ * Crea la fila de profiles de quien llegó por OAuth: ningún proveedor aporta
+ * player_name, así que lo elige aquí. El trigger handle_new_user no ha
+ * insertado nada porque la metadata del proveedor no lo trae.
+ */
+export async function completeProfileAction(
+  _prev: AuthFormState,
+  formData: FormData,
+): Promise<AuthFormState> {
+  const playerName = String(formData.get("player_name") ?? "")
+    .trim()
+    .toUpperCase();
+
+  if (!playerName) {
+    return fail("ELIGE UN NOMBRE DE JUGADOR.");
+  }
+  if (!PLAYER_NAME_RE.test(playerName)) {
+    return fail("EL USUARIO ADMITE LETRAS, NÚMEROS, _ Y - (MÁX. 10).");
+  }
+
+  const supabase = await createClient();
+
+  // La policy profiles_insert_own solo deja crear la fila propia, así que el id
+  // sale de la sesión y nunca del formulario.
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return fail("TU SESIÓN HA CADUCADO. VUELVE A ENTRAR DESDE /AUTH.");
+  }
+
+  // Redundante a propósito con el unique de la tabla: esta comprobación da el
+  // mensaje bueno, el unique es lo que de verdad decide.
+  try {
+    if (await isPlayerNameTaken(playerName)) {
+      return fail("ESE NOMBRE YA ESTÁ EN USO. ELIGE OTRO.");
+    }
+  } catch (err) {
+    console.error("completeProfileAction: fallo comprobando el nombre:", err);
+    return fail(GENERIC_ERROR);
+  }
+
+  const { error } = await supabase
+    .from("profiles")
+    .insert({ id: user.id, player_name: playerName });
+
+  if (error) {
+    // 23505 = unique_violation: dos jugadores eligiendo el mismo nombre a la vez.
+    if (error.code === "23505") {
+      return fail("ESE NOMBRE YA ESTÁ EN USO. ELIGE OTRO.");
+    }
+    console.error("completeProfileAction: el insert falló:", error.message);
+    return fail(GENERIC_ERROR);
+  }
+
+  // El layout y la nav ya se renderizaron viendo a este usuario como invitado.
   revalidatePath("/", "layout");
   redirect("/games");
 }

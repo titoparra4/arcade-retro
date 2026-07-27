@@ -46,6 +46,85 @@ export async function getProfile(): Promise<Profile | null> {
   return { id: sessionUser.id, playerName: sessionUser.playerName };
 }
 
+/** Usuario con sesión iniciada pero sin fila en profiles. */
+export interface PendingUser {
+  id: string;
+  email: string;
+  suggestedName: string; // ya normalizado: mayúsculas, 1–10, ^[A-Z0-9_-]{1,10}$
+}
+
+/** Lo que propone suggestPlayerName cuando no queda nada aprovechable. */
+const FALLBACK_PLAYER_NAME = "JUGADOR";
+
+function asString(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+/**
+ * Deriva un player_name a partir de la metadata del proveedor.
+ * Orden: user_name · preferred_username · primera palabra de full_name · parte
+ * local del correo. Se pasa a mayúsculas, se descarta lo que no case con
+ * [A-Z0-9_-], se recorta a 10 y, si queda vacío, devuelve "JUGADOR".
+ * Es solo una sugerencia: la unicidad la sigue garantizando el unique de la tabla.
+ */
+export function suggestPlayerName(
+  metadata: Record<string, unknown>,
+  email: string,
+): string {
+  // GitHub manda full_name; Google manda name. Son el mismo dato.
+  const fullName = asString(metadata.full_name) || asString(metadata.name);
+
+  const candidates = [
+    asString(metadata.user_name),
+    asString(metadata.preferred_username),
+    fullName.trim().split(/\s+/)[0] ?? "",
+    email.split("@")[0] ?? "",
+  ];
+
+  for (const candidate of candidates) {
+    const normalized = candidate
+      .toUpperCase()
+      .replace(/[^A-Z0-9_-]/g, "")
+      .slice(0, 10);
+
+    if (normalized) return normalized;
+  }
+
+  return FALLBACK_PLAYER_NAME;
+}
+
+/**
+ * Devuelve el usuario si tiene sesión y NO tiene perfil; null en cualquier otro
+ * caso. Es lo que distingue a quien acaba de llegar por OAuth —y debe pasar por
+ * /auth/completar-perfil— de quien ya eligió nombre.
+ */
+export async function getUserWithoutProfile(): Promise<PendingUser | null> {
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return null;
+
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  if (error) throw error;
+  if (data) return null; // ya tiene perfil: no hay nada pendiente
+
+  const email = user.email ?? "";
+
+  return {
+    id: user.id,
+    email,
+    suggestedName: suggestPlayerName(user.user_metadata ?? {}, email),
+  };
+}
+
 /**
  * Comprueba si un player_name ya está registrado. La tabla los guarda siempre
  * en mayúsculas, así que se normaliza antes de comparar.
