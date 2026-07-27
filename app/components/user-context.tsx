@@ -93,20 +93,23 @@ export function UserProvider({
       const sessionUser = session?.user ?? null;
       const nextId = sessionUser?.id ?? null;
 
-      setUser((current) =>
-        sessionUser
-          ? {
-              id: sessionUser.id,
-              email: sessionUser.email ?? "",
-              // El player_name definitivo lo trae el layout; el de la metadata
-              // sirve mientras llega el refresh.
-              name:
-                current?.id === sessionUser.id
-                  ? current.name
-                  : (sessionUser.user_metadata?.player_name ?? ""),
-            }
-          : null,
-      );
+      setUser((current) => {
+        if (!sessionUser) return null;
+
+        // El player_name definitivo lo trae el layout; el de la metadata sirve
+        // mientras llega el refresh.
+        const name =
+          current?.id === sessionUser.id
+            ? current.name
+            : (sessionUser.user_metadata?.player_name ?? "");
+
+        // Sesión sin nombre = llegó por OAuth y aún no ha pasado por
+        // /auth/completar-perfil. Para la interfaz es un invitado hasta que
+        // elija uno, igual que lo ve el servidor en getSessionUser().
+        if (!name) return null;
+
+        return { id: sessionUser.id, email: sessionUser.email ?? "", name };
+      });
 
       // Revalidar el árbol de servidor solo cuando de verdad cambia quién eres:
       // los refrescos periódicos de token no deben provocar recargas.
