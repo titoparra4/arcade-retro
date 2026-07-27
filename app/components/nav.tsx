@@ -46,7 +46,11 @@ export function Nav() {
           <span>CRÉDITOS · 03</span>
         </div>
         {user ? (
-          <button className="btn ghost auth-btn" onClick={signOut}>
+          <button
+            className="btn ghost auth-btn"
+            onClick={() => void signOut()}
+            title="Cerrar sesión"
+          >
             {user.name} ▾
           </button>
         ) : (
@@ -68,10 +72,17 @@ export function Nav() {
         onClick={close}
       ></div>
       <aside className={"av-mobile-panel" + (open ? " open" : "")}>
-        <div className="pixel neon-cyan" style={{ fontSize: 11, marginBottom: 16 }}>
+        <div
+          className="pixel neon-cyan"
+          style={{ fontSize: 11, marginBottom: 16 }}
+        >
           MENÚ
         </div>
-        <Link href="/" className={isActive("/") ? "active" : ""} onClick={close}>
+        <Link
+          href="/"
+          className={isActive("/") ? "active" : ""}
+          onClick={close}
+        >
           Inicio
         </Link>
         <Link
@@ -105,7 +116,11 @@ export function Nav() {
         <div style={{ flex: 1 }}></div>
         <div
           className="pixel"
-          style={{ fontSize: 9, color: "var(--ink-faint)", letterSpacing: "0.16em" }}
+          style={{
+            fontSize: 9,
+            color: "var(--ink-faint)",
+            letterSpacing: "0.16em",
+          }}
         >
           CRÉDITOS · 03
         </div>

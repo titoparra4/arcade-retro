@@ -126,7 +126,10 @@ export function HallOfFame({
                       ? " top2"
                       : i === 2
                         ? " top3"
-                        : "")
+                        : "") +
+                  // El perfil manda: player_name es único, así que la
+                  // coincidencia de nombre identifica tu fila sin ambigüedad.
+                  (you && r.rank === you.rank ? " mine" : "")
                 }
                 style={{ animationDelay: `${i * 50}ms` }}
               >

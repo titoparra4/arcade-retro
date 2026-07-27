@@ -1,5 +1,10 @@
 import type { Metadata } from "next";
-import { Press_Start_2P, JetBrains_Mono, Courier_Prime } from "next/font/google";
+import {
+  Press_Start_2P,
+  JetBrains_Mono,
+  Courier_Prime,
+} from "next/font/google";
+import { getSessionUser } from "@/lib/supabase/profiles";
 import { Nav } from "./components/nav";
 import { UserProvider } from "./components/user-context";
 import "./globals.css";
@@ -28,11 +33,22 @@ export const metadata: Metadata = {
     "Plataforma para jugar juegos retro en línea y competir por la puntuación más alta.",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Resolver la sesión aquí es lo que evita el parpadeo de "sin sesión" en la
+  // nav: el primer HTML ya sale con el jugador correcto.
+  const sessionUser = await getSessionUser();
+  const initialUser = sessionUser
+    ? {
+        id: sessionUser.id,
+        email: sessionUser.email,
+        name: sessionUser.playerName,
+      }
+    : null;
+
   return (
     <html
       lang="es"
@@ -42,7 +58,7 @@ export default function RootLayout({
         <div className="av-bg" />
         <div className="av-noise" />
         <div id="root">
-          <UserProvider>
+          <UserProvider initialUser={initialUser}>
             <Nav />
             <main className="av-main">{children}</main>
             <footer
