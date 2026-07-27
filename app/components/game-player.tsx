@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import type { Game } from "@/lib/supabase/games";
@@ -26,13 +27,14 @@ export function GamePlayer({ game }: { game: Game }) {
   const [paused, setPaused] = useState(false);
   const [over, setOver] = useState(false);
   const [won, setWon] = useState(false);
-  const [customName, setCustomName] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  // El usuario llega tras montar (localStorage); solo pisa el nombre si no lo editó el jugador.
-  const name = customName ?? user?.name ?? "INVITADO";
+  // El nombre ya no es editable: la policy de scores exige que coincida con el
+  // player_name del perfil, así que un input aquí prometería algo que la base
+  // rechaza. Sin sesión no se guarda, y el HUD lo dice.
+  const name = user?.name ?? "INVITADO";
 
   // Simulación decorativa de puntuación/nivel — solo para los juegos que aún no tienen juego real.
   useEffect(() => {
@@ -76,12 +78,16 @@ export function GamePlayer({ game }: { game: Game }) {
   };
 
   const handleSaveScore = async () => {
+    if (!user) return;
     setSaving(true);
     setSaveError(null);
     const supabase = createClient();
-    const { error } = await supabase
-      .from("scores")
-      .insert({ game_id: game.id, player_name: name, score });
+    const { error } = await supabase.from("scores").insert({
+      game_id: game.id,
+      player_name: user.name,
+      score,
+      user_id: user.id,
+    });
     setSaving(false);
     if (error) {
       setSaveError("No se pudo guardar la puntuación. Intenta de nuevo.");
@@ -252,15 +258,22 @@ export function GamePlayer({ game }: { game: Game }) {
             <h2>{won ? "¡VICTORIA!" : "FIN DEL JUEGO"}</h2>
             <div className="final-label">PUNTUACIÓN FINAL</div>
             <div className="final">{score.toLocaleString("es-ES")}</div>
-            {!saved ? (
+            {!user ? (
+              <div className="save-signin">
+                <p>
+                  Las puntuaciones del salón llevan nombre. Entra y guarda la
+                  tuya.
+                </p>
+                <Link className="btn yellow" href="/auth">
+                  INICIAR SESIÓN
+                </Link>
+              </div>
+            ) : !saved ? (
               <div className="input-row">
-                <input
-                  value={name}
-                  onChange={(e) =>
-                    setCustomName(e.target.value.toUpperCase().slice(0, 10))
-                  }
-                  placeholder="TUS INICIALES"
-                />
+                <div className="save-as">
+                  <span className="l">Se guarda como</span>
+                  <span className="v">{name}</span>
+                </div>
                 <button
                   className="btn yellow"
                   disabled={saving}
