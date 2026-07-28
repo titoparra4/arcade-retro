@@ -1,6 +1,7 @@
 "use server";
 
 import { Resend } from "resend";
+import { checkRateLimit, RATE_LIMIT_ERROR } from "@/lib/rate-limit";
 
 export type ContactInput = {
   name: string;
@@ -18,7 +19,13 @@ const FROM = "Arcade Retro <onboarding@resend.dev>";
 const GENERIC_ERROR = "NO SE PUDO TRANSMITIR EL MENSAJE. INTENTA DE NUEVO.";
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-export async function sendContactEmail(input: ContactInput): Promise<ContactResult> {
+export async function sendContactEmail(
+  input: ContactInput,
+): Promise<ContactResult> {
+  if (!(await checkRateLimit("contact"))) {
+    return { ok: false, error: RATE_LIMIT_ERROR };
+  }
+
   const name = input.name?.trim();
   const email = input.email?.trim();
   const msg = input.msg?.trim();

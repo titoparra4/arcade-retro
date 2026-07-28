@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { checkRateLimit, RATE_LIMIT_ERROR } from "@/lib/rate-limit";
 import { isPlayerNameTaken } from "@/lib/supabase/profiles";
 import { createClient } from "@/lib/supabase/server";
 
@@ -64,6 +65,10 @@ export async function signUpAction(
   _prev: AuthFormState,
   formData: FormData,
 ): Promise<AuthFormState> {
+  if (!(await checkRateLimit("signUp"))) {
+    return fail(RATE_LIMIT_ERROR);
+  }
+
   // El player_name vive en mayúsculas en la base: normalizar aquí es lo que
   // hace que el unique de Postgres baste como garantía de unicidad.
   const playerName = String(formData.get("player_name") ?? "")
@@ -123,6 +128,10 @@ export async function signInAction(
   _prev: AuthFormState,
   formData: FormData,
 ): Promise<AuthFormState> {
+  if (!(await checkRateLimit("signIn"))) {
+    return fail(RATE_LIMIT_ERROR);
+  }
+
   const email = String(formData.get("email") ?? "").trim();
   const password = String(formData.get("password") ?? "");
 
@@ -253,6 +262,10 @@ export async function requestPasswordResetAction(
   _prev: AuthFormState,
   formData: FormData,
 ): Promise<AuthFormState> {
+  if (!(await checkRateLimit("passwordReset"))) {
+    return fail(RATE_LIMIT_ERROR);
+  }
+
   const email = String(formData.get("email") ?? "").trim();
 
   if (!EMAIL_RE.test(email)) {
