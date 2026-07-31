@@ -47,3 +47,7 @@ next-env.d.ts
 
 .playwright-mcp/*
 !.playwright-mcp/.gitkeep
+
+# comando personal de Telegram (solo local)
+.claude/commands/
+.claude/scripts/

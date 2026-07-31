@@ -74,10 +74,9 @@ Usa siempre `/frontend-design` para diseñar la interfaz de usuario (skill globa
 - `/games/[id]/jugar` — the player (`game-player.tsx`) that mounts the real game.
 - `/salon` — Hall of Fame (`hall-of-fame.tsx`), leaderboards across games.
 - `/about` — about + contact form (Server Action email).
-- `/auth` — sign-in screen for the simulated user.
-- `/debug/supabase` — Supabase connection debug page.
+- `/auth` — sign-in / sign-up screen, plus `completar-perfil`, `recuperar` and `nueva-contrasena`.
 
-There are no `route.ts` API handlers — server work happens in Server Components and Server Actions.
+The only `route.ts` handlers are the two auth ones (`app/auth/callback` for the OAuth PKCE return, `app/auth/confirm` for email links). All other server work happens in Server Components and Server Actions.
 
 Cross-cutting UI lives in `app/components/` (`nav.tsx`, `game-card.tsx`, `user-context.tsx`, etc.).
 
@@ -89,12 +88,24 @@ Cross-cutting UI lives in `app/components/` (`nav.tsx`, `game-card.tsx`, `user-c
 
 ### Backend & data (Supabase)
 
-Games and scores live in **Supabase**, not in local files. Two tables: `games` (id/title/short/long/cat/cover/color) and `scores` (game_id/player_name/score/created_at).
+Games and scores live in **Supabase**, not in local files. Three tables: `games` (id/title/short/long/cat/cover/color), `scores` (game_id/player_name/score/user_id/created_at) and `profiles` (id → `auth.users`, player_name).
+
+**There are two Supabase projects.** The MCP server in `.mcp.json` points only at **development** — Claude has no access to production, and the production `project_ref` must not be added there. Everything that touches production is run by hand by Tito, following `references/produccion/RUNBOOK.md`.
+
+**Every schema change goes through a migration — no exceptions.** This is how changes reach production at all, so a change that isn't a migration is a change that will never ship.
+
+1. Apply it to dev with `mcp__supabase__apply_migration` (snake_case name that says what it does). Never `execute_sql` for DDL, never the dashboard SQL Editor.
+2. **In the same step**, save the identical SQL to `supabase/migrations/<version>_<name>.sql`, using the version Supabase assigned (check with `list_migrations`). The repo directory and `supabase_migrations.schema_migrations` in dev must always match, file for file.
+3. Write it idempotent (`create or replace`, `drop policy if exists`, `if not exists`) and forward-only — a migration already applied is never edited or deleted; mistakes are fixed by a new migration.
+4. **New table ⇒ trim its grants in the same migration.** The `ensure_rls` event trigger only enables RLS; Supabase still hands `anon`/`authenticated` all 7 privileges. `revoke all` then grant back only what's needed.
+
+`supabase/migrations/README.md` holds the full contract, including how Tito replays pending migrations against production. `references/produccion/01-esquema.sql` is the **baseline for a fresh project only** (all migrations to date, compressed, plus a block registering them) — it is not patched when the schema changes; new migration files are.
 
 - **Data access**: `lib/supabase/games.ts` exposes server helpers — `getGames`, `getGame`, `getTopScores`, `getAllTopScores`. `best`/`plays` are derived from `scores` (MAX / COUNT). `app/data.ts` holds only shared UI types (`Category`, `GameColor`, `CATS`).
 - **Clients**: `lib/supabase/server.ts` (Server Components, cookie-based), `lib/supabase/client.ts` (browser — used by the player to `insert` into `scores`), `lib/supabase/proxy.ts` (session refresh via `proxy.ts`).
-- **Env vars** (`.env.local`, template in `.env.template`): `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `RESEND_API_KEY`.
-- **Auth is simulated**: `user-context.tsx` keeps a `{ name }` user in `localStorage` under `av_user`, used as the default leaderboard name — not real Supabase auth. It also owns the global skin preference under `av_skin`.
+- **Env vars** (`.env.local`, template in `.env.template`): `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `RESEND_API_KEY`, `NEXT_PUBLIC_APP_URL`. `.env.template` **is tracked** (`.gitignore` has an explicit `!.env.template`), so it must only ever contain placeholders. `SUPABASE_DB_PASSWORD` is declared there but read by no code — it is only for connecting to Postgres directly.
+- **Auth is real Supabase auth** (SPECs 13–14): email/password plus Google and GitHub OAuth. `app/auth/actions.ts` holds the Server Actions, `lib/supabase/profiles.ts` the profile helpers, and `proxy.ts` refreshes the session on every request (it does **not** protect routes). A `handle_new_user` trigger creates the profile on sign-up; OAuth users pick their `player_name` at `/auth/completar-perfil`. `user-context.tsx` now only owns the global skin preference under `av_skin` (`av_user` survives as a legacy key from the simulated-user era).
+- **Security**: RLS on all three tables, 6 policies, and grants deliberately trimmed so `anon`/`authenticated` hold only the 9 privileges they need — writes fail at the grant layer before RLS is even evaluated. Contract in `specs/15-endurecimiento-seguridad.md`; audits in `references/security/`.
 - **Contact email**: `app/about/actions.ts` is a Server Action sending mail via **Resend** (currently in sandbox mode → only delivers to the account owner).
 
 ### Game architecture
