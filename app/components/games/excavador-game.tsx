@@ -33,6 +33,9 @@ const INFLATE_STAGE_MS = 550; // por etapa de inflado (y el tic que revienta)
 const POP_SCORE = 250; // Pooka reventado con la bomba
 const ROCK_FALL_STEP_MS = 140; // por celda de caída de una roca
 const CRUSH_SCORE = 500; // Pooka aplastado por una roca
+const LEVEL_CLEAR_BONUS = 1000; // por limpiar un nivel
+const ENEMY_STEP_DECREMENT = 30; // los Pooka aceleran en cada vuelta a LEVELS
+const ENEMY_STEP_MIN_MS = 160; // suelo de velocidad de los Pooka
 
 const CONTROL_CODES = new Set([
   "ArrowUp",
@@ -109,32 +112,44 @@ function buildGrid(layout: LevelLayout): CellKind[][] {
   return grid;
 }
 
+function spawnPlayer(layout: LevelLayout): GameData["player"] {
+  return {
+    col: layout.startCell.col,
+    row: layout.startCell.row,
+    dir: "down",
+    moveAccum: 0,
+  };
+}
+
+function spawnEnemies(layout: LevelLayout): Enemy[] {
+  return layout.enemies.map((cell) => ({
+    col: cell.col,
+    row: cell.row,
+    alive: true,
+    stepAccum: 0,
+    pumpStage: 0 as const,
+    dir: null,
+  }));
+}
+
+function spawnRocks(layout: LevelLayout): Rock[] {
+  return layout.rocks.map((cell) => ({
+    col: cell.col,
+    row: cell.row,
+    falling: false,
+    fallAccum: 0,
+    settled: false,
+  }));
+}
+
 function createInitialGameData(): GameData {
   const layout = LEVELS[0];
   return {
     grid: buildGrid(layout),
-    player: {
-      col: layout.startCell.col,
-      row: layout.startCell.row,
-      dir: "down",
-      moveAccum: 0,
-    },
+    player: spawnPlayer(layout),
     pendingDir: null,
-    enemies: layout.enemies.map((cell) => ({
-      col: cell.col,
-      row: cell.row,
-      alive: true,
-      stepAccum: 0,
-      pumpStage: 0 as const,
-      dir: null,
-    })),
-    rocks: layout.rocks.map((cell) => ({
-      col: cell.col,
-      row: cell.row,
-      falling: false,
-      fallAccum: 0,
-      settled: false,
-    })),
+    enemies: spawnEnemies(layout),
+    rocks: spawnRocks(layout),
     pump: {
       active: false,
       dir: "down",
@@ -469,6 +484,50 @@ function checkEnemyContact(data: GameData) {
     (e) => e.alive && e.col === data.player.col && e.row === data.player.row,
   );
   if (hit) loseLife(data);
+}
+
+// ── Progresión de niveles ───────────────────────────────────────────────────
+
+/**
+ * Nivel limpio: bonus, siguiente layout y reconstrucción completa del tablero.
+ * `level` es acumulado y nunca reinicia, así que el HUD refleja la progresión
+ * real; al dar la vuelta a LEVELS los Pooka se vuelven más rápidos, con suelo en
+ * ENEMY_STEP_MIN_MS. No hay victoria final: el juego es de supervivencia.
+ */
+function advanceLevel(data: GameData, repaintTerrain: () => void) {
+  data.score += LEVEL_CLEAR_BONUS;
+  data.level += 1;
+
+  const layoutIndex = (data.level - 1) % LEVELS.length;
+  if (layoutIndex === 0) {
+    // Se completó una vuelta entera a LEVELS: los Pooka aceleran.
+    data.enemyStepMs = Math.max(
+      ENEMY_STEP_MIN_MS,
+      data.enemyStepMs - ENEMY_STEP_DECREMENT,
+    );
+  }
+
+  const layout = LEVELS[layoutIndex];
+  data.grid = buildGrid(layout);
+  data.player = spawnPlayer(layout);
+  data.pendingDir = null;
+  data.enemies = spawnEnemies(layout);
+  data.rocks = spawnRocks(layout);
+  data.invulnMs = 0;
+
+  // El índice del objetivo apuntaba al array de enemigos anterior.
+  data.pump.targetEnemyIndex = null;
+  data.pump.cells = 0;
+  data.pump.extendAccum = 0;
+  data.pump.inflateAccum = 0;
+
+  repaintTerrain();
+}
+
+function checkLevelClear(data: GameData, repaintTerrain: () => void) {
+  if (data.state !== "playing") return;
+  if (data.enemies.some((e) => e.alive)) return;
+  advanceLevel(data, repaintTerrain);
 }
 
 // ── Rocas ───────────────────────────────────────────────────────────────────
@@ -853,8 +912,12 @@ export const ExcavadorGame = forwardRef<
 
   // reset()/forceGameOver() se completan en el paso 8 del plan; de momento
   // reconstruyen el nivel 1 y marcan el fin de partida.
+  // Lo rellena el efecto: olvida las teclas que quedaran pulsadas al reiniciar.
+  const clearInputRef = useRef<() => void>(() => {});
+
   const reset = useCallback(() => {
     dataRef.current = createInitialGameData();
+    clearInputRef.current();
     const terrain = terrainRef.current;
     const tctx = terrain?.getContext("2d");
     if (tctx) paintTerrain(tctx, dataRef.current.grid);
@@ -906,6 +969,11 @@ export const ExcavadorGame = forwardRef<
       dataRef.current.pendingDir =
         heldDirs.length > 0 ? heldDirs[heldDirs.length - 1] : null;
     }
+
+    clearInputRef.current = () => {
+      heldDirs = [];
+      syncPendingDir();
+    };
 
     function handleKeyDown(e: KeyboardEvent) {
       if (!CONTROL_CODES.has(e.code)) return;
@@ -959,6 +1027,11 @@ export const ExcavadorGame = forwardRef<
       paintTunnelCell(tctx!, col, row);
     }
 
+    /** Repinta el terreno entero: solo al cambiar de nivel o al reiniciar. */
+    function repaintTerrain() {
+      paintTerrain(tctx!, dataRef.current.grid);
+    }
+
     function reportChanges(data: GameData) {
       const reported = reportedRef.current;
       const cb = callbacksRef.current;
@@ -992,6 +1065,7 @@ export const ExcavadorGame = forwardRef<
         checkEnemyContact(data); // …o un Pooka se metió en la suya
         stepRocks(data, dt);
         stepPump(data, dt);
+        checkLevelClear(data, repaintTerrain);
       }
 
       draw(ctx!, terrain, data);
