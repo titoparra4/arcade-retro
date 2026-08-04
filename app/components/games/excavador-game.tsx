@@ -26,6 +26,7 @@ const LIVES_START = 3;
 const ENEMY_STEP_MS = 340; // paso inicial de los Pooka; se acelera al hacer loop de LEVELS
 const TUNNEL_STEP_MS = 220; // recorrer una celda ya cavada
 const DIG_STEP_MS = 480; // abrir una celda de tierra: la tensión central del juego
+const RESPAWN_INVULN_MS = 1200; // gracia tras perder una vida
 
 const CONTROL_CODES = new Set([
   "ArrowUp",
@@ -49,6 +50,10 @@ interface Enemy extends GridPos {
   alive: boolean;
   stepAccum: number; // ms acumulados desde el último paso de grilla
   pumpStage: 0 | 1 | 2 | 3; // 0 = normal, 3 = a punto de reventar
+  // `dir` no está en el bloque de tipos del spec, pero la conducta que sí exige
+  // ("sin invertir de golpe salvo que sea la única opción") necesita recordar
+  // por dónde vino. null = todavía no se ha movido.
+  dir: Direction | null;
 }
 
 interface Pump {
@@ -109,7 +114,8 @@ function createInitialGameData(): GameData {
       row: cell.row,
       alive: true,
       stepAccum: 0,
-      pumpStage: 0,
+      pumpStage: 0 as const,
+      dir: null,
     })),
     rocks: layout.rocks.map((cell) => ({
       col: cell.col,
@@ -149,6 +155,20 @@ const DIR_BY_CODE: Record<string, Direction> = {
   ArrowLeft: "left",
   ArrowRight: "right",
 };
+
+const OPPOSITE: Record<Direction, Direction> = {
+  up: "down",
+  down: "up",
+  left: "right",
+  right: "left",
+};
+
+const ALL_DIRS: Direction[] = ["up", "down", "left", "right"];
+
+/** El layout activo: `level` es acumulado, así que se cicla sobre LEVELS. */
+function currentLayout(data: GameData): LevelLayout {
+  return LEVELS[(data.level - 1) % LEVELS.length];
+}
 
 function inGrid(pos: GridPos) {
   return pos.col >= 0 && pos.col < COLS && pos.row >= 0 && pos.row < ROWS;
@@ -216,6 +236,110 @@ function stepPlayer(
   }
   player.col = target.col;
   player.row = target.row;
+}
+
+/**
+ * Los Pooka nunca cavan: solo circulan por celdas ya abiertas (`empty`/`sky`) y
+ * las rocas les bloquean el paso igual que al excavador.
+ */
+function canEnemyEnter(data: GameData, pos: GridPos) {
+  if (!inGrid(pos)) return false;
+  if (data.grid[pos.row][pos.col] === "dirt") return false;
+  return !rockAt(data, pos);
+}
+
+function manhattan(a: GridPos, b: GridPos) {
+  return Math.abs(a.col - b.col) + Math.abs(a.row - b.row);
+}
+
+/** ¿Hay otro Pooka vivo en esa celda? (`self` se excluye del test). */
+function enemyAt(data: GameData, pos: GridPos, self: Enemy) {
+  return data.enemies.some(
+    (e) => e !== self && e.alive && e.col === pos.col && e.row === pos.row,
+  );
+}
+
+/**
+ * Un paso de un Pooka: entre los vecinos transitables elige el que más reduce
+ * la distancia Manhattan al excavador. No se da la vuelta de golpe salvo que
+ * retroceder sea la única salida (callejón sin salida).
+ *
+ * Dos Pooka no pueden compartir celda: si el mejor movimiento está ocupado, coge
+ * el siguiente vecino libre, y si no queda ninguno se planta este turno. Sin
+ * esta regla todos convergen a la misma celda y los 4/5/6 monstruos de cada
+ * nivel se juegan —y se ven— como uno solo.
+ */
+function moveEnemy(data: GameData, enemy: Enemy) {
+  const options = ALL_DIRS.map((dir) => {
+    const delta = DIRECTION_DELTAS[dir];
+    return {
+      dir,
+      pos: { col: enemy.col + delta.dc, row: enemy.row + delta.dr },
+    };
+  }).filter((o) => canEnemyEnter(data, o.pos) && !enemyAt(data, o.pos, enemy));
+
+  if (options.length === 0) return;
+
+  const back = enemy.dir ? OPPOSITE[enemy.dir] : null;
+  const forward = options.filter((o) => o.dir !== back);
+  const candidates = forward.length > 0 ? forward : options;
+
+  let best = candidates[0];
+  let bestDist = manhattan(best.pos, data.player);
+  for (const option of candidates.slice(1)) {
+    const dist = manhattan(option.pos, data.player);
+    // Empate: se mantiene el rumbo actual, para que no tiemblen en los cruces.
+    if (dist < bestDist || (dist === bestDist && option.dir === enemy.dir)) {
+      best = option;
+      bestDist = dist;
+    }
+  }
+
+  enemy.col = best.pos.col;
+  enemy.row = best.pos.row;
+  enemy.dir = best.dir;
+}
+
+function stepEnemies(data: GameData, dt: number) {
+  for (const enemy of data.enemies) {
+    if (!enemy.alive) continue;
+    enemy.stepAccum += dt;
+    if (enemy.stepAccum < data.enemyStepMs) continue;
+    enemy.stepAccum -= data.enemyStepMs;
+    moveEnemy(data, enemy);
+  }
+}
+
+/**
+ * Resta una vida y respawnea al excavador en la celda de inicio del nivel. Los
+ * túneles ya cavados y las rocas se quedan como estaban.
+ */
+function loseLife(data: GameData) {
+  if (data.invulnMs > 0 || data.state !== "playing") return;
+
+  data.lives -= 1;
+  if (data.lives <= 0) {
+    data.lives = 0;
+    data.state = "gameover";
+    return;
+  }
+
+  const start = currentLayout(data).startCell;
+  data.player.col = start.col;
+  data.player.row = start.row;
+  data.player.dir = "down";
+  data.player.moveAccum = 0;
+  data.pendingDir = null;
+  data.invulnMs = RESPAWN_INVULN_MS;
+}
+
+/** Contacto con un Pooka vivo: cuesta una vida (salvo en la gracia del respawn). */
+function checkEnemyContact(data: GameData) {
+  if (data.invulnMs > 0) return;
+  const hit = data.enemies.some(
+    (e) => e.alive && e.col === data.player.col && e.row === data.player.row,
+  );
+  if (hit) loseLife(data);
 }
 
 // ── Paleta ──────────────────────────────────────────────────────────────────
@@ -417,6 +541,36 @@ function drawDigger(ctx: CanvasRenderingContext2D, player: GameData["player"]) {
   ctx.fill();
 }
 
+/** Pooka: bola roja con gafas amarillas. Se hincha con `pumpStage` (paso 6). */
+function drawPooka(ctx: CanvasRenderingContext2D, enemy: Enemy) {
+  const cx = enemy.col * CELL + CELL / 2;
+  const cy = enemy.row * CELL + CELL / 2;
+  const r = CELL * 0.34 * (1 + enemy.pumpStage * 0.22);
+
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fillStyle = "#e23b3b";
+  ctx.fill();
+  ctx.strokeStyle = "#7d1414";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Gafas: dos lentes amarillas unidas, la firma visual del Pooka.
+  const eyeR = r * 0.34;
+  const eyeY = cy - r * 0.12;
+  for (const sign of [-1, 1]) {
+    const ex = cx + sign * r * 0.36;
+    ctx.beginPath();
+    ctx.arc(ex, eyeY, eyeR, 0, Math.PI * 2);
+    ctx.fillStyle = "#ffd23f";
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(ex, eyeY, eyeR * 0.45, 0, Math.PI * 2);
+    ctx.fillStyle = "#1a1a22";
+    ctx.fill();
+  }
+}
+
 function draw(
   ctx: CanvasRenderingContext2D,
   terrain: HTMLCanvasElement,
@@ -426,7 +580,13 @@ function draw(
   ctx.fillRect(0, 0, W, H);
   ctx.drawImage(terrain, 0, 0);
   for (const rock of data.rocks) drawRock(ctx, rock);
-  drawDigger(ctx, data.player);
+  for (const enemy of data.enemies) if (enemy.alive) drawPooka(ctx, enemy);
+
+  // Durante la invulnerabilidad el excavador parpadea, para que se vea que el
+  // golpe todavía no cuenta.
+  const blinking =
+    data.invulnMs > 0 && Math.floor(data.invulnMs / 110) % 2 === 0;
+  if (!blinking) drawDigger(ctx, data.player);
 }
 
 // ── Componente ──────────────────────────────────────────────────────────────
@@ -445,6 +605,12 @@ export const ExcavadorGame = forwardRef<
   const terrainRef = useRef<HTMLCanvasElement | null>(null);
   const dataRef = useRef<GameData>(createInitialGameData());
   const pausedRef = useRef(paused);
+  // Último valor comunicado al HUD: los callbacks solo se disparan al cambiar.
+  const reportedRef = useRef({
+    score: 0,
+    lives: LIVES_START,
+    level: 1,
+  });
   const callbacksRef = useRef({
     onScoreChange,
     onLivesChange,
@@ -467,6 +633,7 @@ export const ExcavadorGame = forwardRef<
     const terrain = terrainRef.current;
     const tctx = terrain?.getContext("2d");
     if (tctx) paintTerrain(tctx, dataRef.current.grid);
+    reportedRef.current = { score: 0, lives: LIVES_START, level: 1 };
     callbacksRef.current.onScoreChange(0);
     callbacksRef.current.onLevelChange(1);
     callbacksRef.current.onLivesChange(LIVES_START);
@@ -542,6 +709,25 @@ export const ExcavadorGame = forwardRef<
       paintTunnelCell(tctx!, col, row);
     }
 
+    function reportChanges(data: GameData) {
+      const reported = reportedRef.current;
+      const cb = callbacksRef.current;
+      if (data.score !== reported.score) {
+        reported.score = data.score;
+        cb.onScoreChange(data.score);
+      }
+      if (data.lives !== reported.lives) {
+        reported.lives = data.lives;
+        cb.onLivesChange(data.lives);
+      }
+      if (data.level !== reported.level) {
+        reported.level = data.level;
+        cb.onLevelChange(data.level);
+      }
+    }
+
+    let wasGameOver = false;
+
     function loop(ts: number) {
       // dt capado a 50ms: convención de la casa, evita saltos tras un tab inactivo.
       const dt = lastTime === null ? 0 : Math.min(ts - lastTime, 50);
@@ -549,10 +735,25 @@ export const ExcavadorGame = forwardRef<
 
       const data = dataRef.current;
       if (!pausedRef.current && data.state === "playing") {
+        if (data.invulnMs > 0) data.invulnMs = Math.max(0, data.invulnMs - dt);
         stepPlayer(data, dt, carveCell);
+        checkEnemyContact(data); // el excavador se metió en la celda de un Pooka
+        stepEnemies(data, dt);
+        checkEnemyContact(data); // …o un Pooka se metió en la suya
       }
 
       draw(ctx!, terrain, data);
+      reportChanges(data);
+
+      if (data.state === "gameover") {
+        if (!wasGameOver) {
+          wasGameOver = true;
+          callbacksRef.current.onGameOver(data.score, false);
+        }
+      } else {
+        wasGameOver = false;
+      }
+
       rafId = requestAnimationFrame(loop);
     }
 
