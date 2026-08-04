@@ -27,6 +27,10 @@ const ENEMY_STEP_MS = 340; // paso inicial de los Pooka; se acelera al hacer loo
 const TUNNEL_STEP_MS = 220; // recorrer una celda ya cavada
 const DIG_STEP_MS = 480; // abrir una celda de tierra: la tensión central del juego
 const RESPAWN_INVULN_MS = 1200; // gracia tras perder una vida
+const PUMP_EXTEND_MS = 90; // por celda de manguera
+const PUMP_MAX_RANGE = 5; // alcance máximo en celdas
+const INFLATE_STAGE_MS = 550; // por etapa de inflado (y el tic que revienta)
+const POP_SCORE = 250; // Pooka reventado con la bomba
 
 const CONTROL_CODES = new Set([
   "ArrowUp",
@@ -301,12 +305,128 @@ function moveEnemy(data: GameData, enemy: Enemy) {
 }
 
 function stepEnemies(data: GameData, dt: number) {
-  for (const enemy of data.enemies) {
+  for (const [index, enemy] of data.enemies.entries()) {
     if (!enemy.alive) continue;
+    // Un Pooka enganchado a la manguera queda sujeto: no se mueve mientras la
+    // bomba lo tenga cogido. Sin esto no habría forma de reventarlo —los 2200 ms
+    // de inflado son 6 pasos suyos— y el criterio de aceptación del spec
+    // ("lo infla en 3 etapas y lo revienta en la cuarta") sería inalcanzable.
+    if (data.pump.targetEnemyIndex === index) continue;
     enemy.stepAccum += dt;
     if (enemy.stepAccum < data.enemyStepMs) continue;
     enemy.stepAccum -= data.enemyStepMs;
     moveEnemy(data, enemy);
+  }
+}
+
+// ── Bomba de aire ───────────────────────────────────────────────────────────
+
+/**
+ * Celdas que ocupa la manguera ahora mismo, desde el excavador hacia `pump.dir`.
+ * Se recalcula cada frame porque el excavador puede moverse mientras bombea: la
+ * manguera solo pasa por celdas ya cavadas, así que se corta sola al primer
+ * obstáculo.
+ */
+function hoseCells(data: GameData): GridPos[] {
+  const pump = data.pump;
+  const delta = DIRECTION_DELTAS[pump.dir];
+  const cells: GridPos[] = [];
+  for (let n = 1; n <= pump.cells; n++) {
+    const cell: GridPos = {
+      col: data.player.col + delta.dc * n,
+      row: data.player.row + delta.dr * n,
+    };
+    if (!inGrid(cell)) break;
+    if (data.grid[cell.row][cell.col] === "dirt") break;
+    if (rockAt(data, cell)) break;
+    cells.push(cell);
+  }
+  return cells;
+}
+
+/** Suelta el Pooka enganchado (si lo hay) y recoge la manguera. */
+function detachPump(data: GameData) {
+  const pump = data.pump;
+  if (pump.targetEnemyIndex !== null) {
+    const target = data.enemies[pump.targetEnemyIndex];
+    if (target) target.pumpStage = 0; // vuelve a la etapa 0, sin daño
+  }
+  pump.targetEnemyIndex = null;
+  pump.cells = 0;
+  pump.extendAccum = 0;
+  pump.inflateAccum = 0;
+}
+
+function stepPump(data: GameData, dt: number) {
+  const pump = data.pump;
+  if (!pump.active) return;
+
+  // El excavador se movió y la manguera ya no cabe: se recoge hasta donde llega.
+  const reach = hoseCells(data);
+  if (reach.length < pump.cells) pump.cells = reach.length;
+
+  // ── Enganchado: inflar ────────────────────────────────────────────────────
+  if (pump.targetEnemyIndex !== null) {
+    const target = data.enemies[pump.targetEnemyIndex];
+    const stillOnLine =
+      target &&
+      target.alive &&
+      reach.some((c) => c.col === target.col && c.row === target.row);
+
+    // Se salió de la línea (o murió aplastado): se corta la conexión.
+    if (!stillOnLine) {
+      detachPump(data);
+      return;
+    }
+
+    pump.inflateAccum += dt;
+    while (pump.inflateAccum >= INFLATE_STAGE_MS) {
+      pump.inflateAccum -= INFLATE_STAGE_MS;
+      if (target.pumpStage < 3) {
+        target.pumpStage = (target.pumpStage + 1) as 1 | 2 | 3;
+      } else {
+        // Un tic más tras la etapa 3: revienta.
+        target.alive = false;
+        target.pumpStage = 0;
+        data.score += POP_SCORE;
+        detachPump(data);
+        return;
+      }
+    }
+    return;
+  }
+
+  // ── Libre: extender la manguera celda a celda ─────────────────────────────
+  pump.extendAccum += dt;
+  while (pump.extendAccum >= PUMP_EXTEND_MS && pump.cells < PUMP_MAX_RANGE) {
+    pump.extendAccum -= PUMP_EXTEND_MS;
+    const delta = DIRECTION_DELTAS[pump.dir];
+    const next: GridPos = {
+      col: data.player.col + delta.dc * (pump.cells + 1),
+      row: data.player.row + delta.dr * (pump.cells + 1),
+    };
+    if (
+      !inGrid(next) ||
+      data.grid[next.row][next.col] === "dirt" ||
+      rockAt(data, next)
+    ) {
+      break; // topa con tierra sin cavar, una roca o el borde
+    }
+    pump.cells += 1;
+  }
+
+  // Engancha con el Pooka vivo más cercano que esté sobre la manguera. Se
+  // comprueba cada frame, no solo al extender: un Pooka puede meterse en la
+  // línea con la manguera ya desplegada del todo.
+  for (const cell of hoseCells(data)) {
+    const index = data.enemies.findIndex(
+      (e) => e.alive && e.col === cell.col && e.row === cell.row,
+    );
+    if (index >= 0) {
+      pump.targetEnemyIndex = index;
+      pump.inflateAccum = 0;
+      break;
+    }
   }
 }
 
@@ -331,6 +451,7 @@ function loseLife(data: GameData) {
   data.player.moveAccum = 0;
   data.pendingDir = null;
   data.invulnMs = RESPAWN_INVULN_MS;
+  detachPump(data); // el excavador reaparece lejos: la manguera se recoge
 }
 
 /** Contacto con un Pooka vivo: cuesta una vida (salvo en la gracia del respawn). */
@@ -571,6 +692,36 @@ function drawPooka(ctx: CanvasRenderingContext2D, enemy: Enemy) {
   }
 }
 
+/** Manguera de la bomba: tubo desde el excavador hasta la punta, con arpón. */
+function drawHose(ctx: CanvasRenderingContext2D, data: GameData) {
+  const cells = hoseCells(data);
+  if (cells.length === 0) return;
+
+  const fromX = data.player.col * CELL + CELL / 2;
+  const fromY = data.player.row * CELL + CELL / 2;
+  const tip = cells[cells.length - 1];
+  const toX = tip.col * CELL + CELL / 2;
+  const toY = tip.row * CELL + CELL / 2;
+
+  ctx.strokeStyle = "#d8dee9";
+  ctx.lineWidth = 6;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(fromX, fromY);
+  ctx.lineTo(toX, toY);
+  ctx.stroke();
+
+  ctx.strokeStyle = "#7c8798";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Punta del arpón.
+  ctx.beginPath();
+  ctx.arc(toX, toY, 7, 0, Math.PI * 2);
+  ctx.fillStyle = "#ffd23f";
+  ctx.fill();
+}
+
 function draw(
   ctx: CanvasRenderingContext2D,
   terrain: HTMLCanvasElement,
@@ -580,6 +731,7 @@ function draw(
   ctx.fillRect(0, 0, W, H);
   ctx.drawImage(terrain, 0, 0);
   for (const rock of data.rocks) drawRock(ctx, rock);
+  if (data.pump.active) drawHose(ctx, data);
   for (const enemy of data.enemies) if (enemy.alive) drawPooka(ctx, enemy);
 
   // Durante la invulnerabilidad el excavador parpadea, para que se vea que el
@@ -686,6 +838,21 @@ export const ExcavadorGame = forwardRef<
       if (!CONTROL_CODES.has(e.code)) return;
       e.preventDefault(); // ni las flechas ni el espacio hacen scroll de la página
       if (pausedRef.current) return;
+      const data = dataRef.current;
+
+      if (e.code === "Space") {
+        // keydown se repite mientras la tecla sigue pulsada: solo el primero
+        // despliega la manguera, en la dirección que mira el excavador.
+        if (data.pump.active) return;
+        data.pump.active = true;
+        data.pump.dir = data.player.dir;
+        data.pump.cells = 0;
+        data.pump.extendAccum = 0;
+        data.pump.inflateAccum = 0;
+        data.pump.targetEnemyIndex = null;
+        return;
+      }
+
       const dir = DIR_BY_CODE[e.code];
       if (!dir) return;
       if (!heldDirs.includes(dir)) heldDirs.push(dir);
@@ -695,6 +862,16 @@ export const ExcavadorGame = forwardRef<
     function handleKeyUp(e: KeyboardEvent) {
       if (!CONTROL_CODES.has(e.code)) return;
       e.preventDefault();
+      const data = dataRef.current;
+
+      if (e.code === "Space") {
+        // Soltar antes de reventarlo: la manguera se recoge y el Pooka se
+        // desinfla sin daño.
+        data.pump.active = false;
+        detachPump(data);
+        return;
+      }
+
       const dir = DIR_BY_CODE[e.code];
       if (!dir) return;
       heldDirs = heldDirs.filter((d) => d !== dir);
@@ -740,6 +917,7 @@ export const ExcavadorGame = forwardRef<
         checkEnemyContact(data); // el excavador se metió en la celda de un Pooka
         stepEnemies(data, dt);
         checkEnemyContact(data); // …o un Pooka se metió en la suya
+        stepPump(data, dt);
       }
 
       draw(ctx!, terrain, data);
