@@ -1,6 +1,6 @@
 # SPEC — Juego real: Excavador (Dig Dug)
 
-> **Estado:** Aprobado
+> **Estado:** Implementado
 > **Depende de:** SPEC 01 (rutas `/games/[id]/jugar`, `GamePlayer`, HUD, modal de fin de partida), SPEC 05 (contrato `GameComponentProps`/`GameComponentHandle`, `GAME_REGISTRY`), SPEC 06 (esquema de `games`/`scores` en Supabase — la fila `excavador` **no** existe todavía y debe insertarse), SPEC 07 (convención sin sonido, estado mutable en `useRef`, loop con `dt` capado a 50ms)
 > **Fecha:** 2026-08-03
 > **Objetivo:** Crear desde cero un componente cliente en canvas (`ExcavadorGame`) que implemente un Dig Dug clásico —grilla subterránea cavable, bomba de aire para inflar y reventar monstruos Pooka, rocas que caen y aplastan, 3 vidas y niveles hardcodeados en dificultad creciente— e integrarlo en `/games/excavador/jugar`, sembrando por primera vez la fila `excavador` en Supabase (no existe placeholder previo).
