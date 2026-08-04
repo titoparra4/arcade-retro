@@ -840,6 +840,42 @@ a {
   filter: drop-shadow(0 0 6px rgba(0, 245, 255, 0.4));
 }
 
+.cover-excavador {
+  background: linear-gradient(
+    180deg,
+    #0a0a18 0 22%,
+    #8a4a1c 22% 40%,
+    #1d5c74 40% 58%,
+    #6b2a5e 58% 78%,
+    #2a5c30 78% 100%
+  );
+}
+.cover-excavador::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    /* pozo vertical y galería horizontal ya excavados */
+    linear-gradient(#08080e, #08080e) 46% 22%/9% 42% no-repeat,
+    linear-gradient(#08080e, #08080e) 18% 52%/64% 13% no-repeat,
+    /* roca colgando sobre la galería y un Pooka dentro */
+    radial-gradient(circle at 30% 80%, #8e8e9c 0 13px, transparent 14px),
+    radial-gradient(circle at 72% 58%, #e23b3b 0 9px, transparent 10px);
+  filter: drop-shadow(0 0 8px rgba(255, 0, 110, 0.4));
+}
+.cover-excavador::before {
+  content: "";
+  position: absolute;
+  left: 47%;
+  top: 30%;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #eaf2ff;
+  box-shadow: 0 0 8px rgba(234, 242, 255, 0.7);
+  z-index: 1;
+}
+
 /* ===== detail screen ===== */
 .av-detail {
   display: grid;
