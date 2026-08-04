@@ -2,6 +2,7 @@ import type { ForwardRefExoticComponent, RefAttributes } from "react";
 import { AsteroidsGame } from "./asteroids-game";
 import { BloqueBusterGame } from "./bloque-buster-game";
 import { CaidaGame } from "./caida-game";
+import { ExcavadorGame } from "./excavador-game";
 import { RanariaGame } from "./ranaria-game";
 import { SerpentinaGame } from "./serpentina-game";
 
@@ -105,6 +106,11 @@ export const GAME_REGISTRY: Partial<Record<string, GameRegistryEntry>> = {
       { code: "ArrowLeft", label: "◄", mode: "tap", group: "pad" },
       { code: "ArrowRight", label: "►", mode: "tap", group: "pad" },
     ],
+  },
+  // Sin extraStatLabel: la SPEC excavador-01-clasico reserva el slot de stat
+  // extra para el aviso de fuego de Fygar, que va en excavador-02-modo-fygar.
+  excavador: {
+    Component: ExcavadorGame,
   },
   serpentina: {
     Component: SerpentinaGame,
