@@ -24,6 +24,16 @@ const H = ROWS * CELL; // 600
 // ── Constantes de juego (SPEC excavador-01-clasico) ─────────────────────────
 const LIVES_START = 3;
 const ENEMY_STEP_MS = 340; // paso inicial de los Pooka; se acelera al hacer loop de LEVELS
+const TUNNEL_STEP_MS = 220; // recorrer una celda ya cavada
+const DIG_STEP_MS = 480; // abrir una celda de tierra: la tensión central del juego
+
+const CONTROL_CODES = new Set([
+  "ArrowUp",
+  "ArrowDown",
+  "ArrowLeft",
+  "ArrowRight",
+  "Space",
+]);
 
 // ── Modelo de datos ─────────────────────────────────────────────────────────
 
@@ -122,6 +132,90 @@ function createInitialGameData(): GameData {
     invulnMs: 0,
     state: "playing",
   };
+}
+
+// ── Simulación ──────────────────────────────────────────────────────────────
+
+const DIRECTION_DELTAS: Record<Direction, { dc: number; dr: number }> = {
+  up: { dc: 0, dr: -1 },
+  down: { dc: 0, dr: 1 },
+  left: { dc: -1, dr: 0 },
+  right: { dc: 1, dr: 0 },
+};
+
+const DIR_BY_CODE: Record<string, Direction> = {
+  ArrowUp: "up",
+  ArrowDown: "down",
+  ArrowLeft: "left",
+  ArrowRight: "right",
+};
+
+function inGrid(pos: GridPos) {
+  return pos.col >= 0 && pos.col < COLS && pos.row >= 0 && pos.row < ROWS;
+}
+
+function rockAt(data: GameData, pos: GridPos) {
+  return data.rocks.some((r) => r.col === pos.col && r.row === pos.row);
+}
+
+/**
+ * El excavador puede entrar en cualquier celda de la grilla —la tierra la cava—
+ * salvo que haya una roca o se salga del tablero.
+ */
+function canPlayerEnter(data: GameData, pos: GridPos) {
+  return inGrid(pos) && !rockAt(data, pos);
+}
+
+/**
+ * Avanza el paso de grilla del excavador. `carve` repinta la celda en el canvas
+ * de terreno, para no tener que repintarlo entero cada vez que se abre un túnel.
+ */
+function stepPlayer(
+  data: GameData,
+  dt: number,
+  carve: (col: number, row: number) => void,
+) {
+  const player = data.player;
+  const want = data.pendingDir;
+
+  if (!want) {
+    player.moveAccum = 0;
+    return;
+  }
+
+  const delta = DIRECTION_DELTAS[want];
+  const target: GridPos = {
+    col: player.col + delta.dc,
+    row: player.row + delta.dr,
+  };
+
+  // Roca o borde: el movimiento no ocurre y `dir` no cambia — el spec define
+  // `dir` como la última dirección de movimiento *válida*.
+  if (!canPlayerEnter(data, target)) {
+    player.moveAccum = 0;
+    return;
+  }
+
+  // Cambiar de intención reinicia el acumulador: no se arrastra el progreso de
+  // un paso hacia otra celda (que además puede costar el doble).
+  if (want !== player.dir) {
+    player.dir = want;
+    player.moveAccum = 0;
+  }
+
+  const digging = data.grid[target.row][target.col] === "dirt";
+  const cost = digging ? DIG_STEP_MS : TUNNEL_STEP_MS;
+
+  player.moveAccum += dt;
+  if (player.moveAccum < cost) return;
+
+  player.moveAccum = 0;
+  if (digging) {
+    data.grid[target.row][target.col] = "empty";
+    carve(target.col, target.row);
+  }
+  player.col = target.col;
+  player.row = target.row;
 }
 
 // ── Paleta ──────────────────────────────────────────────────────────────────
@@ -411,13 +505,54 @@ export const ExcavadorGame = forwardRef<
     let rafId = 0;
     let lastTime: number | null = null;
 
+    // Pila de flechas pulsadas todavía sin soltar. El excavador avanza mientras
+    // se mantenga la tecla, y al soltar una vuelve a la anterior que siga
+    // presionada (en vez de quedarse quieto), que es como se siente el arcade.
+    let heldDirs: Direction[] = [];
+
+    function syncPendingDir() {
+      dataRef.current.pendingDir =
+        heldDirs.length > 0 ? heldDirs[heldDirs.length - 1] : null;
+    }
+
+    function handleKeyDown(e: KeyboardEvent) {
+      if (!CONTROL_CODES.has(e.code)) return;
+      e.preventDefault(); // ni las flechas ni el espacio hacen scroll de la página
+      if (pausedRef.current) return;
+      const dir = DIR_BY_CODE[e.code];
+      if (!dir) return;
+      if (!heldDirs.includes(dir)) heldDirs.push(dir);
+      syncPendingDir();
+    }
+
+    function handleKeyUp(e: KeyboardEvent) {
+      if (!CONTROL_CODES.has(e.code)) return;
+      e.preventDefault();
+      const dir = DIR_BY_CODE[e.code];
+      if (!dir) return;
+      heldDirs = heldDirs.filter((d) => d !== dir);
+      syncPendingDir();
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+
+    /** Abre una celda en el canvas de terreno sin repintar las otras 191. */
+    function carveCell(col: number, row: number) {
+      paintTunnelCell(tctx!, col, row);
+    }
+
     function loop(ts: number) {
       // dt capado a 50ms: convención de la casa, evita saltos tras un tab inactivo.
       const dt = lastTime === null ? 0 : Math.min(ts - lastTime, 50);
       lastTime = ts;
-      void dt; // la simulación entra en los pasos 4–8 del plan
 
-      draw(ctx!, terrain, dataRef.current);
+      const data = dataRef.current;
+      if (!pausedRef.current && data.state === "playing") {
+        stepPlayer(data, dt, carveCell);
+      }
+
+      draw(ctx!, terrain, data);
       rafId = requestAnimationFrame(loop);
     }
 
@@ -425,6 +560,8 @@ export const ExcavadorGame = forwardRef<
 
     return () => {
       cancelAnimationFrame(rafId);
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
       terrainRef.current = null;
     };
   }, []);
