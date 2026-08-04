@@ -31,6 +31,8 @@ const PUMP_EXTEND_MS = 90; // por celda de manguera
 const PUMP_MAX_RANGE = 5; // alcance máximo en celdas
 const INFLATE_STAGE_MS = 550; // por etapa de inflado (y el tic que revienta)
 const POP_SCORE = 250; // Pooka reventado con la bomba
+const ROCK_FALL_STEP_MS = 140; // por celda de caída de una roca
+const CRUSH_SCORE = 500; // Pooka aplastado por una roca
 
 const CONTROL_CODES = new Set([
   "ArrowUp",
@@ -48,6 +50,11 @@ type CellKind = "sky" | "dirt" | "empty";
 interface Rock extends GridPos {
   falling: boolean;
   fallAccum: number; // ms acumulados desde el último paso de caída
+  // `settled` no está en el bloque de tipos del spec, pero sí la conducta que
+  // exige: "al aterrizar queda fija como obstáculo permanente… ya no puede
+  // volver a caer". Sin la marca, cavar bajo una roca aterrizada la haría caer
+  // otra vez.
+  settled: boolean;
 }
 
 interface Enemy extends GridPos {
@@ -126,6 +133,7 @@ function createInitialGameData(): GameData {
       row: cell.row,
       falling: false,
       fallAccum: 0,
+      settled: false,
     })),
     pump: {
       active: false,
@@ -461,6 +469,71 @@ function checkEnemyContact(data: GameData) {
     (e) => e.alive && e.col === data.player.col && e.row === data.player.row,
   );
   if (hit) loseLife(data);
+}
+
+// ── Rocas ───────────────────────────────────────────────────────────────────
+
+/** ¿Hay OTRA roca en esa celda? (`self` se excluye del test). */
+function otherRockAt(data: GameData, pos: GridPos, self: Rock) {
+  return data.rocks.some(
+    (r) => r !== self && r.col === pos.col && r.row === pos.row,
+  );
+}
+
+/** La roca se apoya en tierra sólida, en otra roca, o en el fondo de la grilla. */
+function rockIsSupported(data: GameData, rock: Rock) {
+  const below: GridPos = { col: rock.col, row: rock.row + 1 };
+  if (below.row >= ROWS) return true; // fondo del tablero
+  if (data.grid[below.row][below.col] === "dirt") return true;
+  return otherRockAt(data, below, rock);
+}
+
+/** Lo que la roca arrolla al entrar en una celda: Pooka (+500) o el excavador. */
+function crushAt(data: GameData, pos: GridPos) {
+  for (const [index, enemy] of data.enemies.entries()) {
+    if (!enemy.alive || enemy.col !== pos.col || enemy.row !== pos.row)
+      continue;
+    enemy.alive = false;
+    enemy.pumpStage = 0;
+    data.score += CRUSH_SCORE;
+    // Si estaba enganchado a la manguera, la bomba se queda sin objetivo.
+    if (data.pump.targetEnemyIndex === index) detachPump(data);
+  }
+  if (data.player.col === pos.col && data.player.row === pos.row) {
+    loseLife(data);
+  }
+}
+
+/**
+ * Cada roca vigila su propia celda-de-abajo. En cuanto queda libre empieza a
+ * caer, y sigue bajando hasta apoyarse. Una roca que aterriza sobre otra no
+ * desencadena la caída de la de abajo: esa sigue estable salvo que se cave su
+ * propia celda-de-abajo.
+ */
+function stepRocks(data: GameData, dt: number) {
+  for (const rock of data.rocks) {
+    if (rock.settled) continue;
+
+    if (!rock.falling) {
+      if (rockIsSupported(data, rock)) continue;
+      rock.falling = true;
+      rock.fallAccum = 0;
+      continue;
+    }
+
+    rock.fallAccum += dt;
+    while (rock.fallAccum >= ROCK_FALL_STEP_MS) {
+      rock.fallAccum -= ROCK_FALL_STEP_MS;
+      if (rockIsSupported(data, rock)) {
+        // Aterrizó: obstáculo fijo el resto del nivel.
+        rock.falling = false;
+        rock.settled = true;
+        break;
+      }
+      rock.row += 1;
+      crushAt(data, rock);
+    }
+  }
 }
 
 // ── Paleta ──────────────────────────────────────────────────────────────────
@@ -917,6 +990,7 @@ export const ExcavadorGame = forwardRef<
         checkEnemyContact(data); // el excavador se metió en la celda de un Pooka
         stepEnemies(data, dt);
         checkEnemyContact(data); // …o un Pooka se metió en la suya
+        stepRocks(data, dt);
         stepPump(data, dt);
       }
 
